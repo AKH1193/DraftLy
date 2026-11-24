@@ -479,3 +479,8 @@ body.glass .theme-card .tc-top { backdrop-filter: blur(6px); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   body.glass { --panel: rgba(255,255,255,.95); } body.glass[data-glass="midnight"] { --panel: #1E2238; }
 }
+.hf-pn { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: -2px 0 10px; font-size: 12px; color: var(--muted); }
+.hf-pn span { margin-right: 4px; }
+.hf-pn button { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 4px; padding: 3px 9px; }
+.hf-pn button:hover, .hf-tools button:hover { background: var(--hover); }
+.hf-editor { background: #fff !important; color: #000; }

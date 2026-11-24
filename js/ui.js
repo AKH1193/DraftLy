@@ -78,7 +78,7 @@ document.addEventListener('selectionchange', () => {
   scheduleUI();
 });
 function insertPasted(mode, html, text) {
-  if (mode !== 'text' && html) return document.execCommand('insertHTML', false, mode === 'merge' && typeof mergeFormatting === 'function' ? mergeFormatting(html) : sanitizeHtml(html, true));
+  if (mode !== 'text' && html) return document.execCommand('insertHTML', false, mode === 'merge' && typeof mergeFormatting === 'function' ? mergeFormatting(html) : stripBackgrounds(sanitizeHtml(html, true)));
   if (!text) return;
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   if (lines.length === 1) document.execCommand('insertText', false, text);
@@ -528,12 +528,39 @@ function dateDialog() {
   fmts.forEach(f => list.append(h('button', { class: 'btn', type: 'button', style: { textAlign: 'left' }, onclick: () => { m.close(); if (Review.isTracking()) { restoreRange(); mutate(() => Review.trackedInsert(f)); } else exec('insertText', f); } }, f)));
   m = modal('Date and Time', list, [{ label: 'Close' }]);
 }
+/* remove copied page or screen backgrounds (they show as black boxes); `all` removes every background */
+function stripBackgrounds(html, all) {
+  const d = h('div', { html });
+  const lum = c => { const m = String(c).match(/rgba?\(([^)]+)\)/); if (!m) { const x = String(c).match(/^#([0-9a-f]{6})$/i); if (!x) return 1; const n = parseInt(x[1], 16); return ((n >> 16) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114) / 255; } const v = m[1].split(',').map(Number); if (v.length > 3 && v[3] === 0) return 1; return (v[0] * 0.299 + v[1] * 0.587 + v[2] * 0.114) / 255; };
+  d.querySelectorAll('[style]').forEach(el => {
+    const bg = el.style.backgroundColor || el.style.background;
+    if (bg && (all || (lum(bg) < 0.2 && lum(el.style.color || '#000000') < 0.5))) { el.style.removeProperty('background-color'); el.style.removeProperty('background'); }
+    if (all) el.style.removeProperty('background-image');
+    if (!el.getAttribute('style')) el.removeAttribute('style');
+  });
+  d.querySelectorAll('[bgcolor]').forEach(el => all && el.removeAttribute('bgcolor'));
+  return d.innerHTML;
+}
 function headerFooterDialog(focus) {
   const s = doc.settings;
   const mkEd = html => h('div', { class: 'hf-editor', contenteditable: 'true', html: html || '' });
   const eds = { header: mkEd(s.header), footer: mkEd(s.footer), firstHeader: mkEd(s.firstHeader), firstFooter: mkEd(s.firstFooter) };
   let active = eds[focus] || eds.header;
-  Object.values(eds).forEach(e => e.addEventListener('focus', () => active = e));
+  Object.values(eds).forEach(e => {
+    e.addEventListener('focus', () => active = e);
+    e.addEventListener('paste', ev => {
+      const cd = ev.clipboardData; if (!cd) return;
+      const html = cd.getData('text/html'), text = cd.getData('text/plain');
+      ev.preventDefault();
+      if (html) document.execCommand('insertHTML', false, stripBackgrounds(sanitizeHtml(html, true), true));
+      else if (text) document.execCommand('insertText', false, text);
+    });
+  });
+  const pn = (align, tpl) => h('button', { type: 'button', onmousedown: e => e.preventDefault(), onclick: () => {
+    eds.footer.querySelectorAll('[data-pn]').forEach(x => x.remove());
+    eds.footer.insertAdjacentHTML('beforeend', `<p data-pn="1" style="text-align:${align}">${tpl}</p>`);
+    if (eds.footer.firstChild && eds.footer.firstChild.nodeName === 'BR') eds.footer.firstChild.remove();
+  } }, align === 'left' ? 'Left' : align === 'center' ? 'Centre' : 'Right');
   const tool = (label, fn) => h('button', { type: 'button', onmousedown: e => e.preventDefault(), onclick: () => { active.focus(); fn(); } }, label);
   const tools = h('div', { class: 'hf-tools' },
     tool('B', () => document.execCommand('bold')), tool('I', () => document.execCommand('italic')), tool('U', () => document.execCommand('underline')),
@@ -547,11 +574,14 @@ function headerFooterDialog(focus) {
   const diff = h('input', { type: 'checkbox' }); diff.checked = !!s.differentFirst;
   const firstBox = h('div', { class: s.differentFirst ? '' : 'hidden' }, field('First page header', eds.firstHeader), field('First page footer', eds.firstFooter));
   diff.addEventListener('change', () => firstBox.classList.toggle('hidden', !diff.checked));
-  const body = h('div', null, tools, field('Header', eds.header), field('Footer', eds.footer), h('label', { class: 'fl' }, diff, ' Different first page'), firstBox,
-    h('p', { class: 'note' }, '{PAGE} shows the page number and {NUMPAGES} the total. Both become live page fields in Word.'));
+  const pnRow = h('div', { class: 'hf-pn' }, h('span', null, 'Page number in footer:'), pn('left', '{PAGE}'), pn('center', '{PAGE}'), pn('right', '{PAGE}'),
+    h('button', { type: 'button', onmousedown: e => e.preventDefault(), onclick: () => { eds.footer.querySelectorAll('[data-pn]').forEach(x => x.remove()); eds.footer.insertAdjacentHTML('beforeend', '<p data-pn="1" style="text-align:center">Page {PAGE} of {NUMPAGES}</p>'); } }, 'Page X of Y'),
+    h('button', { type: 'button', onmousedown: e => e.preventDefault(), onclick: () => eds.footer.querySelectorAll('[data-pn]').forEach(x => x.remove()) }, 'None'));
+  const body = h('div', null, tools, field('Header', eds.header), field('Footer', eds.footer), pnRow, h('label', { class: 'fl' }, diff, ' Different first page'), firstBox,
+    h('p', { class: 'note' }, 'Page numbers count up automatically on every page. {PAGE} is the page number and {NUMPAGES} the total; both become live page fields in Word. The Page # buttons at the top insert where your cursor is.'));
   modal('Header & Footer', body, [{ label: 'Cancel' }, {
     label: 'Apply', primary: true, fn: () => mutate(() => {
-      const clean = e => { const v = e.innerHTML.trim(); return v === '<br>' ? '' : sanitizeHtml(v); };
+      const clean = e => { const v = e.innerHTML.trim(); return v === '<br>' ? '' : stripBackgrounds(sanitizeHtml(v), true); };
       s.header = clean(eds.header); s.footer = clean(eds.footer); s.firstHeader = clean(eds.firstHeader); s.firstFooter = clean(eds.firstFooter); s.differentFirst = diff.checked;
     })
   }], { wide: true });
