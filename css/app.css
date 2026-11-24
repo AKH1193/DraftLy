@@ -94,7 +94,7 @@ body.dark .rb.on { border-color: #3D6585; }
 #scaler { position: relative; margin: 24px auto 40px; transform-origin: 0 0; }
 #pages { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .sheet { position: absolute; left: 0; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.04); overflow: hidden; }
-.sheet .hf { position: absolute; left: 0; right: 0; overflow: hidden; color: #333; cursor: text; }
+.sheet .hf { position: absolute; left: 0; right: 0; overflow: hidden; color: #000; cursor: text; }
 .sheet .hf:empty::before { content: attr(data-ph); color: transparent; }
 .sheet:hover .hf.hdr, .sheet:hover .hf.ftr { outline: 1px dashed transparent; }
 .sheet .wm { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; overflow: hidden; }

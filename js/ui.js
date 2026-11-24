@@ -142,8 +142,8 @@ function hfZoneAt(e) {
   const page = Math.floor(y / stride), yIn = y - page * stride;
   if (yIn > g.ph) return null;
   const first = page === 0 && doc.settings.differentFirst;
-  if (yIn < g.mt - 4) return first ? 'firstHeader' : 'header';
-  if (yIn > g.ph - g.mb + 4) return first ? 'firstFooter' : 'footer';
+  if (yIn < (page === 0 ? g.mt1 : g.mt) - 4) return first ? 'firstHeader' : 'header';
+  if (yIn > g.ph - (page === 0 ? g.mb1 : g.mb) + 4) return first ? 'firstFooter' : 'footer';
   return null;
 }
 $('#pages').addEventListener('dblclick', e => {

@@ -105,7 +105,31 @@ function geom() {
   let [pw, ph] = s.pageSize === 'Custom' && s.pageW && s.pageH ? [s.pageW * 96, s.pageH * 96] : PAGE_PX[s.pageSize] || PAGE_PX.A4;
   if (s.orientation === 'landscape') [pw, ph] = [ph, pw];
   const m = s.margins;
-  return { pw, ph, mt: m.top * 96, mb: m.bottom * 96, ml: m.left * 96, mr: m.right * 96, cw: pw - (m.left + m.right) * 96, ch: ph - (m.top + m.bottom) * 96 };
+  const ml = m.left * 96, mr = m.right * 96, cw = pw - ml - mr;
+  // like Word: a header or footer taller than the margin pushes the text down (or up) instead of being cut off
+  const top = m.top * 96, bot = m.bottom * 96, hTop = hfOffset(top), fBot = hfOffset(bot);
+  const needT = html => html && html.trim() ? Math.max(top, hTop + measureHF(html, cw) + 6) : top;
+  const needB = html => html && html.trim() ? Math.max(bot, fBot + measureHF(html, cw) + 6) : bot;
+  const mt = needT(s.header), mb = needB(s.footer);
+  const mt1 = s.differentFirst ? needT(s.firstHeader) : mt, mb1 = s.differentFirst ? needB(s.firstFooter) : mb;
+  return { pw, ph, mt, mb, mt1, mb1, ml, mr, cw, ch: ph - mt - mb };
+}
+const hfOffset = margin => Math.min(48, margin * 0.5);
+const _hfMeasure = new Map();
+function measureHF(html, cw) {
+  const t = (doc && doc.settings.theme) || {};
+  const key = Math.round(cw) + '|' + t.font + '|' + t.size + '|' + t.lineHeight + '|' + html;
+  if (_hfMeasure.has(key)) return _hfMeasure.get(key);
+  let box = document.getElementById('hfMeasure');
+  if (!box) { box = h('div', { id: 'hfMeasure', class: 'sheet', style: { position: 'absolute', left: '-10000px', top: '0', visibility: 'hidden', height: 'auto' } }, h('div', { class: 'hf' })); document.body.append(box); }
+  const hf = box.firstChild;
+  hf.style.cssText = `position:static;width:${cw}px;max-height:none;overflow:visible`;
+  hf.innerHTML = hfRender(html, 1, 1);
+  const v = hf.scrollHeight;
+  const pending = [...hf.querySelectorAll('img')].filter(i => !i.complete);
+  if (pending.length) pending.forEach(i => i.addEventListener('load', () => { _hfMeasure.delete(key); if (typeof schedulePaginate === 'function') schedulePaginate(); }, { once: true }));
+  else { if (_hfMeasure.size > 40) _hfMeasure.clear(); if (v > 0) _hfMeasure.set(key, v); }
+  return v;
 }
 
 /* ---------- storage (IndexedDB) ---------- */
@@ -281,18 +305,19 @@ function paginate() {
   clearPushes();
   if (!print) { renderSheets(1, g, 0); layoutFootnotes(g, false); return; }
   const gap = ui.printing ? 0 : GAP, stride = g.ph + gap;
-  let breakPage = null, bottom = g.mt;
+  const MT = p => p === 0 ? g.mt1 : g.mt, MB = p => p === 0 ? g.mb1 : g.mb;
+  let breakPage = null, bottom = g.mt1;
   for (const u of collectUnits()) {
     const el = u.el;
     if (el.tagName === 'HR' && el.classList.contains('pb')) { breakPage = Math.floor(topIn(el) / stride); bottom = Math.max(bottom, topIn(el) + el.offsetHeight); continue; }
     const top = topIn(el), hgt = el.offsetHeight;
     const p = Math.max(0, Math.floor(top / stride));
-    const cTop = p * stride + g.mt, cBot = p * stride + g.ph - g.mb;
+    const cTop = p * stride + MT(p), cBot = p * stride + g.ph - MB(p);
     let target = null;
-    if (breakPage !== null) { const tp = (breakPage + 1) * stride + g.mt; if (top < tp - 0.5) target = tp; breakPage = null; }
-    else if (top >= cBot - 0.5) target = (p + 1) * stride + g.mt;
+    if (breakPage !== null) { const tp = (breakPage + 1) * stride + MT(breakPage + 1); if (top < tp - 0.5) target = tp; breakPage = null; }
+    else if (top >= cBot - 0.5) target = (p + 1) * stride + MT(p + 1);
     else if (top < cTop - 0.5) target = cTop;
-    else if (top + hgt > cBot + 0.5 && hgt <= g.ch) target = (p + 1) * stride + g.mt;
+    else if (top + hgt > cBot + 0.5 && hgt <= g.ch) target = (p + 1) * stride + MT(p + 1);
     if (target !== null && target > top) {
       if (u.tr) {
         // move the whole row: insert an invisible spacer row so the table breaks cleanly between pages
@@ -369,8 +394,9 @@ function renderSheets(n, g, gap) {
     const hh = hfRender(first ? s.firstHeader : s.header, i + 1, n), fh = hfRender(first ? s.firstFooter : s.footer, i + 1, n);
     if (hd._h !== hh) { hd.innerHTML = hh; hd._h = hh; }
     if (ft._h !== fh) { ft.innerHTML = fh; ft._h = fh; }
-    Object.assign(hd.style, { top: Math.min(48, g.mt * 0.5) + 'px', left: g.ml + 'px', right: g.mr + 'px', maxHeight: Math.max(10, g.mt - Math.min(48, g.mt * 0.5) - 4) + 'px' });
-    Object.assign(ft.style, { bottom: Math.min(48, g.mb * 0.5) + 'px', left: g.ml + 'px', right: g.mr + 'px', maxHeight: Math.max(10, g.mb - Math.min(48, g.mb * 0.5) - 4) + 'px' });
+    const m = s.margins;
+    Object.assign(hd.style, { top: hfOffset(m.top * 96) + 'px', left: g.ml + 'px', right: g.mr + 'px', maxHeight: 'none' });
+    Object.assign(ft.style, { bottom: hfOffset(m.bottom * 96) + 'px', left: g.ml + 'px', right: g.mr + 'px', maxHeight: 'none' });
     const wm = sh.children[0];
     const wmText = s.watermark || '';
     if (wm._t !== wmText) { wm.innerHTML = wmText ? `<span>${esc(wmText)}</span>` : ''; wm._t = wmText; const sp = wm.firstChild; if (sp) sp.style.fontSize = Math.min(110, Math.round(g.pw * 1.15 / Math.max(4, wmText.length))) + 'px'; }
@@ -385,7 +411,7 @@ function renderSheets(n, g, gap) {
   }
   // editor box
   const totalH = n * stride - gap;
-  Object.assign(editor.style, { marginLeft: g.ml + 'px', width: g.cw + 'px', paddingTop: g.mt + 'px', minHeight: Math.max(0, (n - 1) * stride + g.ph - g.mb) + 'px' });
+  Object.assign(editor.style, { marginLeft: g.ml + 'px', width: g.cw + 'px', paddingTop: g.mt1 + 'px', minHeight: Math.max(0, (n - 1) * stride + g.ph - g.mb) + 'px' });
   const pages = $('#pages');
   pages.style.width = g.pw + 'px';
   pages.style.height = totalH + 'px';
