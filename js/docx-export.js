@@ -198,6 +198,11 @@ const DocxExport = (() => {
       const id = b.footnotes.length;
       return wrap(f, `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${id}"/></w:r>`, part);
     }
+    if (t === 'SPAN' && el.classList.contains('mf')) {
+      const nm = el.getAttribute('data-f') || 'Field';
+      const instr = ` MERGEFIELD ${/\s/.test(nm) ? '"' + nm + '"' : nm} \\* MERGEFORMAT `;
+      return wrap(f, `<w:r>${rPr(f)}<w:fldChar w:fldCharType="begin"/></w:r><w:r>${rPr(f)}<w:instrText xml:space="preserve">${esc(instr)}</w:instrText></w:r><w:r>${rPr(f)}<w:fldChar w:fldCharType="separate"/></w:r><w:r>${rPr(f)}<w:t>«${esc(nm)}»</w:t></w:r><w:r>${rPr(f)}<w:fldChar w:fldCharType="end"/></w:r>`, part);
+    }
     if ((t === 'INS' || t === 'DEL') && el.classList.contains('tc')) {
       const g = Object.assign({}, f);
       const info = { a: el.getAttribute('data-author') || 'Author', d: el.getAttribute('data-date') };

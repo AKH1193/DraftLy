@@ -94,6 +94,9 @@ const MENUS = {
   textBox: a => showMenu(a, [{ label: 'Simple Text Box', icon: 'RectangleEllipsis', fn: () => insertTextBox('simple') }, { label: 'Side Box, right', fn: () => insertTextBox('right') }, { label: 'Side Box, left', fn: () => insertTextBox('left') }, { label: 'Pull Quote', fn: () => insertTextBox('quote') }]),
   dropCap: a => showMenu(a, [{ label: 'None', fn: () => dropCap('none') }, { label: 'Dropped', icon: 'CaseUpper', fn: () => dropCap('drop') }, { label: 'In Margin', fn: () => dropCap('margin') }]),
   lineNumbers: a => { const ln = doc.settings.lineNumbers; showMenu(a, [{ label: 'None', checked: !ln, fn: () => setLineNumbers('none') }, { label: 'Continuous', checked: !!ln && ln.restart === 'continuous', fn: () => setLineNumbers('continuous') }, { label: 'Restart Each Page', checked: !!ln && ln.restart === 'page', fn: () => setLineNumbers('page') }]); },
+  mergeRecipients: a => showMenu(a, [{ label: 'Use an Existing List… (Excel or CSV)', icon: 'Users', fn: selectRecipients }, { label: 'Type a New List…', icon: 'NotebookPen', fn: typeRecipients }, ...(mergeData() ? [{ sep: true }, { label: 'Remove Recipient List', icon: 'X', fn: () => { mergePreview(false); mutate(() => { delete doc.settings.merge; }); renderRibbon(); } }] : [])]),
+  mergeField: a => { const m = mergeData(); if (!m) return toast('Select recipients first'); showMenu(a, m.fields.map(f => ({ label: f, fn: () => insertMergeField(f) }))); },
+  mergeFinish: a => showMenu(a, [{ label: 'Edit Individual Documents…', icon: 'FileStack', fn: () => mergeFinish('doc') }, { label: 'Save Each as a Word File…', icon: 'Mails', fn: () => mergeFinish('files') }, { label: 'Merge to One PDF…', icon: 'FileDown', fn: () => mergeFinish('pdf') }]),
   showLevel: a => showMenu(a, [...[1, 2, 3, 4, 5, 6].map(n => ({ label: 'Level ' + n, checked: outlineLevel === n, fn: () => outlineShowLevel(n) })), { label: 'All Levels', checked: outlineLevel === 9, fn: () => outlineShowLevel(9) }]),
   changeCase: a => showMenu(a, [{ label: 'Sentence case.', fn: () => changeCase('sentence') }, { label: 'lowercase', fn: () => changeCase('lower') }, { label: 'UPPERCASE', fn: () => changeCase('upper') }, { label: 'Capitalize Each Word', fn: () => changeCase('title') }, { label: 'tOGGLE cASE', fn: () => changeCase('toggle') }]),
   foreColor: a => colorMenu(a, THEME_COLORS, c => { lastFore = c || '#000000'; exec('foreColor', lastFore); updateSwatches(); }, 'Automatic'),
@@ -231,12 +234,19 @@ const TABS = [
     { label: 'Table of Contents', items: [big('TableOfContents', 'Table of Contents', null, { menu: 'tocMenu' }), col(sbtn('Heading1', 'Add Text', null, { menu: 'addText' }), sbtn('History', 'Update Table', 'tocUpdate'))] },
     { label: 'Footnotes', items: [big('Footprints', 'Insert Footnote', 'footnote')] }
   ] },
+  { id: 'mailings', label: 'Mailings', groups: [
+    { label: 'Start Mail Merge', items: [big('Users', 'Select Recipients', null, { menu: 'mergeRecipients' }), big('Mails', 'Edit Recipient List', null, { fn: editRecipients })] },
+    { label: 'Write & Insert Fields', items: [big('Merge', 'Insert Merge Field', null, { menu: 'mergeField' })] },
+    { label: 'Preview Results', items: [big('Eye', 'Preview Results', null, { fn: () => mergePreview(), state: () => Merge.preview }), col(row(btn('ChevronsUp', 'First Record', null, { fn: () => mergeGo('first') }), btn('ChevronLeft', 'Previous Record', null, { fn: () => mergeGo(-1) }), { t: 'el', el: () => h('span', { id: 'mergeRec', class: 'merge-rec' }, mergeRecords().length ? `${Merge.idx + 1} / ${mergeRecords().length}` : '0') }, btn('ChevronRight', 'Next Record', null, { fn: () => mergeGo(1) }), btn('ChevronsDown', 'Last Record', null, { fn: () => mergeGo('last') })), { t: 'el', el: () => h('small', { class: 'merge-src' }, mergeData() ? mergeData().source + ' · ' + mergeRecords().length + ' recipients' : 'No recipients yet') })] },
+    { label: 'Finish', items: [big('Mails', 'Finish & Merge', null, { menu: 'mergeFinish' })] }
+  ] },
   { id: 'review', label: 'Review', groups: [
     { label: 'Proofing', items: [big('SpellCheck', 'Spelling', 'spelling', { state: () => editor.spellcheck }), big('WholeWord', 'Word Count', 'wordCount')] },
     { label: 'Language', items: [big('Globe', 'Language', null, { menu: 'language' })] },
     { label: 'Comments', items: [big('MessageSquarePlus', 'New Comment', 'comment'), col(sbtn('MessageSquareX', 'Delete', null, { menu: 'deleteComment' }), sbtn('ChevronLeft', 'Previous', 'prevComment'), sbtn('ChevronRight', 'Next', 'nextComment')), big('MessageSquare', 'Show Comments', 'showComments', { state: () => !$('#commentPane').classList.contains('hidden') })] },
     { label: 'Tracking', items: [big('FileDiff', 'Track Changes', 'track', { state: () => Review.isTracking() }), col(sbtn('Eye', 'Markup', null, { menu: 'markup' }), sbtn('PanelRight', 'Reviewing Pane', 'reviewPane', { state: () => !$('#changesPane').classList.contains('hidden') }), sbtn('User', 'Change User Name', 'userName'))] },
     { label: 'Changes', items: [big('CircleCheck', 'Accept', 'acceptCur', { menu: 'accept', splitBig: true }), big('CircleX', 'Reject', 'rejectCur', { menu: 'reject', splitBig: true }), col(sbtn('ArrowUp', 'Previous', 'prevChange'), sbtn('ArrowDown', 'Next', 'nextChange'))] },
+    { label: 'Compare', items: [big('GitCompareArrows', 'Compare', null, { fn: compareDialog })] },
     { label: 'Protect', items: [big('Lock', 'Restrict Editing', 'restrict', { state: () => ui.readonly })] }
   ] },
   { id: 'view', label: 'View', groups: [

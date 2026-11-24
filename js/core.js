@@ -126,6 +126,7 @@ function cleanHTML(root = editor) {
   c.querySelectorAll('img.sel').forEach(el => { el.classList.remove('sel'); if (!el.className) el.removeAttribute('class'); });
   c.querySelectorAll('.cmt.active').forEach(el => el.classList.remove('active'));
   c.querySelectorAll('[data-olv],[data-oli]').forEach(el => { el.removeAttribute('data-olv'); el.removeAttribute('data-oli'); el.classList.remove('olhide'); if (!el.className) el.removeAttribute('class'); });
+  c.querySelectorAll('span.mf').forEach(s => { s.textContent = '«' + s.getAttribute('data-f') + '»'; s.classList.remove('pv'); });
   c.querySelectorAll('td.csel,th.csel').forEach(el => { el.classList.remove('csel'); if (!el.className) el.removeAttribute('class'); });
   return c.innerHTML.replace(/​/g, '');
 }

@@ -254,6 +254,8 @@ const DocxImport = (() => {
             if (m) { fld.suppress = true; html += m[1].toUpperCase() === 'PAGE' ? '{PAGE}' : '{NUMPAGES}'; }
             const hl = ins.match(/^HYPERLINK\s+"([^"]+)"/i);
             if (hl) fld.link = hl[1];
+            const mf = ins.match(/^MERGEFIELD\s+(?:"([^"]+)"|(\S+))/i);
+            if (mf) { fld.suppress = true; const nm = mf[1] || mf[2]; html += `<span class="mf" contenteditable="false" data-f="${esc(nm)}">«${esc(nm)}»</span>`; }
           } else if (t === 'end') {
             if (fld && fld.phase === 'instr') { const m = fld.instr.trim().match(/^(PAGE|NUMPAGES)\b/i); if (m) html += m[1].toUpperCase() === 'PAGE' ? '{PAGE}' : '{NUMPAGES}'; }
             st.fld.pop();
@@ -318,7 +320,9 @@ const DocxImport = (() => {
           case 'fldSimple': {
             const ins = (attr(n, 'instr') || '').trim();
             const m = ins.match(/^(PAGE|NUMPAGES)\b/i);
+            const mf = ins.match(/^MERGEFIELD\s+(?:"([^"]+)"|(\S+))/i);
             if (m) html += m[1].toUpperCase() === 'PAGE' ? '{PAGE}' : '{NUMPAGES}';
+            else if (mf) { const nm = mf[1] || mf[2]; html += `<span class="mf" contenteditable="false" data-f="${esc(nm)}">«${esc(nm)}»</span>`; }
             else html += inline(n.children, part, st, base);
             break;
           }

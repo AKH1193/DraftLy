@@ -409,3 +409,10 @@ body.outline #editor > .olhide { display: none; }
 .splitdoc hr.pb { border: 0; border-top: 1px dashed #aaa; }
 body.dark .pane.split .pane-body { background: #1b1f24; }
 @media print { #splitPane, .paste-chip, #splash { display: none !important; } }
+/* mail merge & compare */
+#editor span.mf { background: #e8eef7; border-radius: 2px; padding: 0 1px; }
+#editor span.mf.pv { background: #fff3c4; }
+body.printing #editor span.mf { background: none; }
+.merge-rec { min-width: 54px; text-align: center; font-size: 12px; align-self: center; }
+.merge-src { color: var(--muted); font-size: 11px; padding: 2px 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.rcp { border-collapse: collapse; font-size: 12px; } table.rcp th, table.rcp td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; white-space: nowrap; }

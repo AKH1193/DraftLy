@@ -33,6 +33,7 @@ async function persist(immediate) {
 }
 async function loadDoc(d) {
   if (doc && doc.id !== d.id) await persist(true);
+  if (typeof Merge !== "undefined") { Merge.preview = false; Merge.idx = 0; }
   const s = Object.assign(DEFAULT_SETTINGS(), d.settings || {});
   s.margins = Object.assign({ top: 1, bottom: 1, left: 1, right: 1 }, s.margins || {});
   s.theme = Object.assign({}, STYLE_SETS.Default, s.theme || {});
