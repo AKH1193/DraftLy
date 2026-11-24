@@ -430,3 +430,7 @@ body.showmarks #editor span.bm:not(:empty)::before { content: '['; color: #888; 
 body.showmarks #editor span.bm:not(:empty)::after { content: ']'; color: #888; }
 #footnoteArea .en-title { font-size: 0.8em; font-weight: 600; margin: 4px 0; }
 #footnoteArea .en-sep { margin-top: 16px; }
+.docx-bar { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 10px; max-width: min(640px, 94vw); background: var(--panel); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--accent-2); border-radius: 8px; padding: 10px 10px 10px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-size: 13px; }
+.docx-bar .msg { flex: 1; }
+.docx-bar .x { border: 0; background: none; font-size: 18px; color: var(--muted); cursor: pointer; }
+@media print { .docx-bar { display: none !important; } }

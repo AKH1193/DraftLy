@@ -329,6 +329,79 @@ function scheduleFolderCopy() {
     } catch (e) { }
   }, 8000);
 }
+/* Mac: when another device edits a document, rewrite its Word file in the save folder too */
+const pendingDocx = new Set(), permDocx = new Set();
+let docxTimer = null;
+function queueDocxRefresh(id) {
+  if (!FS_OK || IS_NATIVE || prefs.autoDocx === false) return;
+  pendingDocx.add(id);
+  clearTimeout(docxTimer); docxTimer = setTimeout(flushDocxRefresh, 4000);
+}
+async function docxBlobFor(rec) {
+  const open = doc && doc.id === rec.id;
+  const s = open ? doc.settings : Object.assign(DEFAULT_SETTINGS(), rec.settings || {});
+  const root = open ? editor : h('div', { html: rec.html || '<p></p>' });
+  let blob = await DocxExport.build({ root, settings: s, comments: (open ? doc.comments : rec.comments) || {}, theme: s.theme, title: rec.title, author: prefs.author, trackChanges: open ? Review.isTracking() : !!s.trackChanges, created: rec.created, anonymous: !!s.anonymous });
+  if (s.encrypted) {
+    const pw = await Protect.passwordFor(rec.id, true);
+    if (!pw) return null;
+    blob = new Blob([await OfficeCrypto.encrypt(new Uint8Array(await blob.arrayBuffer()), pw)], { type: DOCX_MIME });
+  }
+  return blob;
+}
+/* where this document's Word file lives: 'none' (never saved here), 'perm' (needs your OK), or a writer */
+async function docxTarget(id, ask) {
+  const hnd = fileHandles[id] || await KV.get('fh:' + id);
+  const saved = await KV.get('name:' + id + '.docx');
+  if (!hnd && !saved) return 'none';
+  try {
+    if (hnd) {
+      let p = await hnd.queryPermission({ mode: 'readwrite' });
+      if (p !== 'granted' && ask) p = await hnd.requestPermission({ mode: 'readwrite' });
+      if (p !== 'granted') return 'perm';
+      fileHandles[id] = hnd;
+      return async blob => { const w = await hnd.createWritable(); await w.write(blob); await w.close(); return hnd.name; };
+    }
+    const dir = await KV.get('saveDir');
+    if (!dir) return 'none';
+    let p = await dir.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted' && ask) p = await dir.requestPermission({ mode: 'readwrite' });
+    if (p !== 'granted') return 'perm';
+    return async blob => { await SaveFolder.write(dir, saved, blob, id + '.docx'); return saved; };
+  } catch (e) { return 'perm'; }
+}
+async function flushDocxRefresh(ask) {
+  const ids = [...pendingDocx, ...(ask ? permDocx : [])];
+  pendingDocx.clear();
+  const done = [];
+  for (const id of new Set(ids)) {
+    try {
+      const rec = await Store.get(id);
+      if (!rec || rec.stub) { permDocx.delete(id); continue; }
+      const t = await docxTarget(id, ask);
+      if (t === 'none') { permDocx.delete(id); continue; }
+      if (t === 'perm') { permDocx.add(id); continue; }
+      const blob = await docxBlobFor(rec);
+      if (!blob) { permDocx.delete(id); continue; }
+      done.push(await t(blob)); permDocx.delete(id);
+    } catch (e) { console.warn('docx refresh', e); }
+  }
+  if (done.length) toast(done.length === 1 ? `Word file updated: ${done[0]}` : `${done.length} Word files updated in ${prefs.saveDirName || 'your folder'}`);
+  showDocxBar();
+}
+function showDocxBar() {
+  let bar = $('#docxBar');
+  if (!permDocx.size) { if (bar) bar.remove(); return; }
+  const n = permDocx.size;
+  const msg = `${n} document${n > 1 ? 's were' : ' was'} edited on another device. Update the Word file${n > 1 ? 's' : ''} in ${prefs.saveDirName || 'your folder'}?`;
+  if (!bar) {
+    bar = h('div', { id: 'docxBar', class: 'docx-bar' }, h('span', { class: 'msg' }),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => flushDocxRefresh(true) }, 'Update'),
+      h('button', { class: 'x', type: 'button', title: 'Not now', onclick: () => bar.remove() }, '×'));
+    document.body.append(bar);
+  }
+  bar.querySelector('.msg').textContent = msg;
+}
 CMD.open = async () => {
   if (window.showOpenFilePicker && !IS_NATIVE) {
     try {
@@ -632,6 +705,7 @@ async function receiveRemote(id, meta) {
     const rec = Object.assign({ id }, remote, { syncedAt: remote.modified, stub: false });
     await Store.put(rec);
     if (isOpen) applyRemoteToOpen(rec);
+    queueDocxRefresh(id);
   } catch (e) { console.warn('sync receive', e); }
   finally { syncBusy.delete(id); }
 }
