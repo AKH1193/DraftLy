@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+permissions:
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -34,3 +36,9 @@ jobs:
         with:
           name: DraftLy-apk
           path: DraftLy.apk
+      - name: Publish download link (latest release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" DraftLy.apk --repo "$GITHUB_REPOSITORY" --title "DraftLy for Android (build ${GITHUB_RUN_NUMBER})" --notes "Install on your phone: open https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/DraftLy.apk" --latest
