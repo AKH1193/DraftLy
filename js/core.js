@@ -45,6 +45,9 @@ const THEMES = {
   rose:     { name: 'Rose',           tb: 'linear-gradient(120deg,#7D1F4E,#B33A74)', side: '#7D1F4E', accent: '#962A5E', accent2: '#C2417A', soft: '#F8E4EE', canvas: '#EEE8EB', ribbon: '#FCF9FA' },
   forest:   { name: 'Forest',         tb: 'linear-gradient(120deg,#25402A,#3F6B45)', side: '#25402A', accent: '#2F5535', accent2: '#4C8A55', soft: '#E6F0E7', canvas: '#E8EBE6', ribbon: '#F9FAF8' },
   slate:    { name: 'Slate',          tb: 'linear-gradient(120deg,#334155,#52637A)', side: '#334155', accent: '#3E4F66', accent2: '#4F7CC4', soft: '#E6EDF8', canvas: '#E8EAEE', ribbon: '#F8F9FB' },
+  liquid:   { name: 'Liquid Glass',    glass: 'liquid', tb: 'linear-gradient(135deg,rgba(255,255,255,.75),rgba(225,235,255,.55))', side: 'rgba(255,255,255,.55)', accent: '#0A64D8', accent2: '#0A84FF', soft: 'rgba(10,132,255,.14)', canvas: 'radial-gradient(60% 70% at 15% 20%,#BFD9FF 0%,transparent 60%),radial-gradient(55% 60% at 85% 25%,#E6CCFF 0%,transparent 60%),radial-gradient(60% 60% at 60% 90%,#FFD9C7 0%,transparent 60%),#EEF1F8', ribbon: 'rgba(255,255,255,.5)', tbText: '#1D1D1F', tbHover: 'rgba(0,0,0,.07)', light: true, meta: '#E9EEF8' },
+  midnight: { name: 'Midnight Glass',  glass: 'midnight', tb: 'linear-gradient(135deg,rgba(40,46,78,.85),rgba(22,26,46,.75))', side: 'rgba(22,26,46,.6)', accent: '#6E8BFF', accent2: '#8FA6FF', soft: 'rgba(143,166,255,.18)', canvas: 'radial-gradient(55% 60% at 15% 15%,#3B2A7A 0%,transparent 60%),radial-gradient(50% 55% at 90% 30%,#0E5C6B 0%,transparent 60%),radial-gradient(60% 60% at 50% 100%,#5A1E5C 0%,transparent 60%),#0B0F1E', ribbon: 'rgba(28,32,56,.5)', tbText: '#EEF1FF', tbHover: 'rgba(255,255,255,.12)', meta: '#141a30' },
+  rosegold: { name: 'Rose Gold Glass', glass: 'rosegold', tb: 'linear-gradient(135deg,rgba(255,244,238,.78),rgba(250,226,214,.6))', side: 'rgba(255,240,232,.6)', accent: '#A8573F', accent2: '#C2765A', soft: 'rgba(194,118,90,.15)', canvas: 'radial-gradient(60% 70% at 12% 18%,#FFD3C2 0%,transparent 60%),radial-gradient(55% 60% at 88% 22%,#F6E2B3 0%,transparent 60%),radial-gradient(60% 60% at 55% 95%,#F2C4D0 0%,transparent 60%),#F7EEE9', ribbon: 'rgba(255,248,244,.5)', tbText: '#3A2620', tbHover: 'rgba(80,30,10,.08)', light: true, meta: '#F6E6DE' },
   paper:    { name: 'Paper (light)',  tb: '#F4F1EA', side: '#EAE5DA', accent: '#2F6F5E', accent2: '#2F6F5E', soft: '#E2EFEA', canvas: '#E9E5DC', ribbon: '#FBFAF6', tbText: '#2A2A2A', tbHover: 'rgba(0,0,0,.07)', light: true }
 };
 function applyTheme(name) {
@@ -61,8 +64,12 @@ function applyTheme(name) {
   r.setProperty('--accent-soft', t.soft);
   r.setProperty('--canvas', t.canvas);
   r.setProperty('--ribbon', t.ribbon);
+  const b = document.body;
+  b.classList.toggle('glass', !!t.glass);
+  b.dataset.glass = t.glass ? (dark ? 'midnight' : t.glass) : '';
+  if (t.glass && dark && t.glass !== 'midnight') { const m = THEMES.midnight; ['tb-bg', 'side-bg', 'tb-text', 'tb-hover', 'canvas', 'ribbon'].forEach((k, i) => r.setProperty('--' + k, [m.tb, m.side, m.tbText, m.tbHover, m.canvas, m.ribbon][i])); }
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', dark && t.light ? '#2B2B2B' : (t.tb.match(/#[0-9A-Fa-f]{6}/) || ['#1F5F8B'])[0]);
+  if (meta) meta.setAttribute('content', t.meta && !(dark && t.light) ? t.meta : dark && t.light ? '#2B2B2B' : (t.tb.match(/#[0-9A-Fa-f]{6}/) || ['#1F5F8B'])[0]);
 }
 function setTheme(name) { prefs.theme = name; savePrefs(); applyTheme(name); if (typeof updateRibbonState === 'function') updateRibbonState(); }
 
