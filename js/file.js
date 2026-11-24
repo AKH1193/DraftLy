@@ -541,26 +541,31 @@ async function takeNativeFile() {
 }
 
 /* ---------- backstage ---------- */
-function closeBackstage() { $('#backstage').classList.add('hidden'); }
+function closeBackstage() { $('#backstage').classList.add('hidden'); if (ui.launch) { ui.launch = false; document.body.classList.remove('launch'); } }
 async function openBackstage(page = 'home') {
   await persist();
   const bs = $('#backstage');
   bs.classList.remove('hidden');
-  const pages = [['home', 'FileText', 'Home'], ['new', 'FilePlus', 'New'], ['open', 'FolderOpen', 'Open'], ['info', 'Info', 'Info'], ['save', 'Save', 'Save'], ['saveas', 'Download', 'Save As / Export'], ['print', 'Printer', 'Print'], ['share', 'Share2', 'Share'], ['sync', 'History', 'Sync & Devices'], ['options', 'Settings', 'Options']];
-  const side = h('div', { class: 'bs-side' }, h('button', { class: 'back', title: 'Back', onclick: closeBackstage, html: icon('ArrowLeft') }));
+  let pages = [['home', 'House', 'Home'], ['new', 'FilePlus', 'New'], ['open', 'FolderOpen', 'Open'], ['info', 'Info', 'Info'], ['save', 'Save', 'Save'], ['saveas', 'Download', 'Save As / Export'], ['print', 'Printer', 'Print'], ['share', 'Share2', 'Share'], ['sync', 'History', 'Sync & Devices'], ['options', 'Settings', 'Options']];
+  // the start screen only offers what makes sense before a document is open
+  if (ui.launch) pages = pages.filter(p => ['home', 'new', 'open', 'sync', 'options'].includes(p[0])).map(p => p[0] === 'sync' ? ['sync', 'History', 'Sync'] : p);
+  const side = h('div', { class: 'bs-side' }, ui.launch ? h('div', { class: 'bs-brand' }, h('span', { class: 'logo' }, 'D'), h('b', null, 'DraftLy')) : h('button', { class: 'back', title: 'Back', onclick: closeBackstage, html: icon('ArrowLeft') }));
   pages.forEach(([id, ic, label]) => side.append(h('button', { class: id === page ? 'on' : '', onclick: () => openBackstage(id) }, h('span', { html: icon(ic) }), h('span', { class: 't' }, label))));
   const main = h('div', { class: 'bs-main' });
   bs.innerHTML = '';
   bs.append(side, main);
   await BACKSTAGE[page](main);
 }
-const tplThumb = t => h('div', { class: 'thumb', html: (t.settings && t.settings.header ? t.settings.header : '') + t.html });
+const tplThumb = t => tplPreview(t);
+function tplButton(t) {
+  return h('button', { class: 'tpl', type: 'button', title: t.name, onclick: () => { const html = t.html; newDoc({ html, settings: t.settings ? JSON.parse(JSON.stringify(t.settings)) : {}, title: t.id === 'blank' ? undefined : t.name }); } }, tplThumb(t), h('span', { class: 'tpl-name' }, t.name));
+}
 async function recentList(limit) {
   const all = await Store.all();
   const list = h('div', { class: 'recent-list' });
   if (!all.length) list.append(h('p', { class: 'note' }, 'No documents yet.'));
   all.slice(0, limit || 500).forEach(d => {
-    const it = h('div', { class: 'recent-item' }, h('span', { class: 'ic', html: icon(d.stub ? 'Download' : 'FileText') }), h('div', null, h('div', { class: 'nm' }, d.title || 'Untitled', doc && d.id === doc.id ? ' (open)' : ''), h('div', { class: 'dt' }, new Date(d.modified || Date.now()).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }), d.stub ? ' · on another device' : '')),
+    const it = h('div', { class: 'recent-item' }, h('span', { class: 'ic', html: icon(d.stub ? 'Download' : 'FileText') }), h('div', null, h('div', { class: 'nm' }, d.title || 'Untitled', doc && d.id === doc.id && !ui.launch ? ' (open)' : ''), h('div', { class: 'dt' }, new Date(d.modified || Date.now()).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }), d.stub ? ' · on another device' : '')),
       h('button', { class: 'del', title: 'Delete', html: icon('Trash2'), onclick: async ev => { ev.stopPropagation(); if (confirm(`Delete "${d.title}"${Sync.enabled ? ' from all your devices' : ''}?`)) { await deleteDoc(d.id); openBackstage('open'); } } }));
     it.addEventListener('click', () => openRecord(d.id));
     list.append(it);
@@ -576,18 +581,29 @@ async function folderSection(m) {
 }
 const BACKSTAGE = {
   async home(m) {
-    m.append(h('h2', null, 'Good ' + (new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening')));
-    await BACKSTAGE.newGrid(m, 4);
-    m.append(h('h3', null, 'Recent'), await recentList(12));
+    const hr = new Date().getHours();
+    m.append(h('h2', null, 'Good ' + (hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : 'evening')));
+    const pick = ['blank', 'letterhead', 'notice', 'resume', 'chartreport', 'flowchart', 'tablepres'];
+    const strip = h('div', { class: 'tpl-strip' });
+    pick.map(id => allTemplates().find(t => t.id === id)).filter(Boolean).forEach(t => strip.append(tplButton(t)));
+    strip.append(h('button', { class: 'tpl more', type: 'button', onclick: () => openBackstage('new') }, h('div', { class: 'thumb more-thumb', html: icon('LayoutTemplate') + '<span>More templates</span>' }), h('span', { class: 'tpl-name' }, 'See all')));
+    m.append(h('div', { class: 'home-row' }, h('h3', null, 'New'), h('button', { class: 'linkbtn', type: 'button', onclick: () => openBackstage('new') }, 'More templates ›')), strip);
+    m.append(h('div', { class: 'home-row' }, h('h3', null, 'Recent'), h('button', { class: 'linkbtn', type: 'button', onclick: () => { if (!ui.launch) closeBackstage(); CMD.open(); } }, h('span', { html: icon('FolderOpen') }), ' Open a file')), await recentList(ui.launch ? 40 : 12));
   },
   async newGrid(m, n) {
-    const g = h('div', { class: 'tpl-grid' });
-    TEMPLATES.slice(0, n || 99).forEach(t => g.append(h('button', { class: 'tpl', onclick: () => newDoc({ html: t.html, settings: t.settings ? JSON.parse(JSON.stringify(t.settings)) : {}, title: t.id === 'blank' ? undefined : t.name }) }, tplThumb(t), t.name)));
-    m.append(g);
+    const cats = ['Start', 'Legal', 'Business', 'Visual', 'Personal'];
+    const all = allTemplates().slice(0, n || 99);
+    cats.forEach(c => {
+      const list = all.filter(t => t.cat === c); if (!list.length) return;
+      m.append(h('h3', null, c === 'Start' ? 'Blank' : c === 'Visual' ? 'Charts, Flowcharts and Tables' : c));
+      const g = h('div', { class: 'tpl-grid' });
+      list.forEach(t => g.append(tplButton(t)));
+      m.append(g);
+    });
   },
   async new(m) { m.append(h('h2', null, 'New')); await BACKSTAGE.newGrid(m); },
   async open(m) {
-    m.append(h('h2', null, 'Open'), h('div', { class: 'bs-actions' }, h('button', { class: 'bs-act', onclick: () => { closeBackstage(); CMD.open(); } }, h('span', { class: 'ic', html: icon('FolderOpen') }), h('b', null, 'Browse…'), h('small', null, '.docx, .html, .txt, .md'))));
+    m.append(h('h2', null, 'Open'), h('div', { class: 'bs-actions' }, h('button', { class: 'bs-act', onclick: () => { if (!ui.launch) closeBackstage(); CMD.open(); } }, h('span', { class: 'ic', html: icon('FolderOpen') }), h('b', null, 'Browse…'), h('small', null, '.docx, .html, .txt, .md'))));
     m.append(h('h3', null, 'Documents' + (Sync.enabled ? ' (all devices)' : ' on this device')), await recentList());
   },
   async info(m) {
@@ -817,10 +833,12 @@ Sync.on(async (type, data) => {
   if (first) await loadDoc(first);
   else await newDoc({ title: 'Document1' });
   closeBackstage();
-  if (innerWidth < 760) { ui.fitWidth = true; setView('web'); }
+  if (innerWidth < 760) { ui.fitWidth = true; setView('web'); if (prefs.webZoom && prefs.webZoom !== 1) applyWebZoom(prefs.webZoom); }
   else { if (prefs.zoom === 'width') ui.fitWidth = true; else if (typeof prefs.zoom === 'number') ui.zoom = prefs.zoom; ui.ruler = !!prefs.ruler; }
   renderTabs(); renderRibbon(); applyZoom();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => paginate());
+  // start on the Home screen (recent documents and templates); a file opened from Finder or another app skips it
+  launchHome();
   if (Sync.readSetupLink()) openBackstage('sync');
   if (IS_NATIVE) { takeNativeFile(); window.addEventListener('draftlyopenfile', takeNativeFile); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') takeNativeFile(); }); }
   if ('launchQueue' in window) launchQueue.setConsumer(async p => { for (const hnd of p.files || []) openFileObject(await hnd.getFile(), hnd); });

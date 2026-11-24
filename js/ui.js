@@ -1033,6 +1033,8 @@ function setZoom(z) {
 function setView(v) {
   ui.view = v === 'read' || v === 'web' || v === 'focus' ? (v === 'focus' ? 'print' : 'web') : 'print';
   document.body.classList.toggle('web', v === 'web' || v === 'read');
+  editor.style.zoom = ui.view === 'web' && prefs.webZoom && prefs.webZoom !== 1 ? prefs.webZoom : '';
+  $('#footnoteArea').style.zoom = editor.style.zoom;
   document.body.classList.toggle('read', v === 'read');
   document.body.classList.toggle('focus', v === 'focus');
   $$('.exit-mode').forEach(e => e.remove());

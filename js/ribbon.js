@@ -212,7 +212,7 @@ const TABS = [
   { id: 'insert', label: 'Insert', groups: [
     { label: 'Pages', items: [big('LayoutTemplate', 'Cover Page', null, { menu: 'coverMenu' }), big('FilePlus', 'Blank Page', null, { fn: insertBlankPage }), big('SeparatorHorizontal', 'Page Break', 'pageBreak')] },
     { label: 'Tables', items: [big('Table', 'Table', null, { menu: 'table' })] },
-    { label: 'Illustrations', items: [big('Image', 'Pictures', 'picture'), big('Minus', 'Horizontal Line', 'hr')] },
+    { label: 'Illustrations', items: [big('Image', 'Pictures', 'picture'), big('ChartColumn', 'Chart', null, { fn: () => chartDialog() }), big('Workflow', 'Flowchart', null, { fn: () => flowDialog() }), big('Minus', 'Horizontal Line', 'hr')] },
     { label: 'Links', items: [big('Link', 'Link', 'link'), big('Bookmark', 'Bookmark', null, { fn: bookmarkDialog }), big('Link2', 'Cross-reference', null, { fn: xrefDialog })] },
     { label: 'Comments', items: [big('MessageSquarePlus', 'Comment', 'comment')] },
     { label: 'Header & Footer', items: [big('PanelTop', 'Header', 'headerFooter'), big('PanelBottom', 'Footer', 'footerEdit'), big('Hash', 'Page Number', null, { menu: 'pageNumber' })] },

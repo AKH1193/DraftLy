@@ -485,3 +485,72 @@ body.glass .theme-card .tc-top { backdrop-filter: blur(6px); }
 .hf-pn button:hover, .hf-tools button:hover { background: var(--hover); }
 .hf-editor { background: #fff !important; color: #000; }
 html.copying, html.copying body, html.copying #app, html.copying #main, html.copying #canvas, html.copying #scaler, html.copying #pages { background: transparent !important; }
+
+/* ---------- Title bar on narrow screens: no overlapping ---------- */
+#titlebar .tb-title { flex: 0 1 auto; min-width: 0; }
+#docTitle { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+@media (max-width: 760px) {
+  #titlebar { gap: 4px; padding: 0 6px; }
+  #titlebar .tb-left, #titlebar .tb-right { flex: 0 0 auto; }
+  #titlebar .tb-title { flex: 1 1 auto; justify-content: center; }
+  #docTitle { width: 100%; max-width: none; font-size: 14px; padding: 3px 4px; }
+  #titlebar .qa[data-cmd="redo"], #titlebar .qa[data-cmd="print"], #titlebar .qa[data-cmd="savePdf"], #titlebar .qa[data-cmd="toggleDark"] { display: none; }
+  .logo { margin-right: 2px; }
+  .as-toggle { padding: 4px; }
+}
+@media (max-width: 380px) { #titlebar .qa[data-cmd="share"] { display: none; } }
+
+/* ---------- Start screen and template gallery ---------- */
+.bs-brand { display: flex; align-items: center; gap: 10px; padding: 6px 20px 16px; font-size: 17px; color: var(--tb-text); }
+.bs-brand .logo { width: 28px; height: 28px; }
+body.launch .bs-main { padding-top: 34px; }
+.home-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.linkbtn { border: 0; background: none; color: var(--accent-2); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 2px; }
+.linkbtn svg { width: 15px; height: 15px; }
+.tpl-strip { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 12px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.tpl-strip .tpl { flex: none; scroll-snap-align: start; }
+.tpl { width: 150px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+.tpl .tpl-name { font-size: 13px; line-height: 1.25; text-align: center; color: var(--text); }
+.tpl .thumb.tp { width: 150px; height: 194px; padding: 0; position: relative; overflow: hidden; background: #fff; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.tpl .thumb.tp .tp-page { position: absolute; left: 0; top: 0; width: 816px; min-height: 1056px; padding: 72px 80px; box-sizing: border-box; transform: scale(.1838); transform-origin: 0 0; color: #000; text-align: left; font-size: 11pt; }
+.tp-page p { margin: 0 0 6pt; } .tp-page h1 { font-size: 18pt; margin: 14pt 0 4pt; color: #0F4761; } .tp-page h2 { font-size: 14pt; margin: 10pt 0 4pt; color: #0F4761; }
+.tp-page .s-Title { font-size: 28pt; margin: 0 0 4pt; } .tp-page .s-Subtitle { font-size: 14pt; color: #595959; }
+.tp-page table { border-collapse: collapse; } .tp-page img { max-width: 100%; } .tp-page hr { border: 0; border-top: 1px solid #000; }
+.tp-page .tp-hdr { margin: -40px 0 24px; } .tp-page .textbox { border: 1px solid #000; padding: 6pt; }
+.tp-page .textbox.tb-quote { border-width: 2px 0; border-color: #2F5496; text-align: center; font-style: italic; color: #2F5496; margin: 10pt 10%; }
+.tpl .more-thumb { width: 150px; height: 194px; border: 1px dashed var(--border); border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--accent-2); background: var(--hover); font-size: 13px; }
+.tpl .more-thumb svg { width: 34px; height: 34px; }
+.tpl:hover .thumb, .tpl:focus-visible .thumb { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2); }
+.bs-main .tpl-grid { gap: 18px; margin-bottom: 8px; }
+@media (max-width: 760px) {
+  .tpl, .tpl .thumb.tp, .tpl .more-thumb { width: 116px; }
+  .tpl .thumb.tp, .tpl .more-thumb { height: 150px; }
+  .tpl .thumb.tp .tp-page { transform: scale(.1422); }
+  .bs-main .tpl-grid { gap: 12px; justify-content: flex-start; }
+  /* start screen: Word-style bottom bar with Home / New / Open */
+  body.launch #backstage { flex-direction: column-reverse; }
+  body.launch .bs-side { width: auto; flex-direction: row; justify-content: space-around; padding: 4px 0 calc(4px + var(--safe-bottom, 0px)); overflow: visible; border-top: 1px solid var(--border); }
+  body.launch .bs-side .bs-brand { display: none; }
+  body.launch .bs-side button { flex-direction: column; gap: 2px; padding: 6px 4px; font-size: 11px; flex: 1; align-items: center; border-radius: 10px; }
+  body.launch .bs-side button span.t { display: block; }
+  body.launch .bs-side button svg { width: 22px; height: 22px; }
+  body.launch .bs-main { padding: 20px 14px; }
+}
+
+/* ---------- Chart and flowchart editors ---------- */
+.chart-dlg .chart-tools { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.chart-wrap { overflow: auto; max-height: 34vh; border: 1px solid var(--border); border-radius: 6px; }
+table.chart-grid { border-collapse: collapse; width: 100%; }
+table.chart-grid td, table.chart-grid th { border: 1px solid var(--border); padding: 0; }
+table.chart-grid input { width: 100%; min-width: 70px; border: 0; padding: 6px 8px; background: transparent; color: var(--text); font: inherit; }
+table.chart-grid th input { font-weight: 600; }
+table.chart-grid input.num { text-align: right; }
+.chart-prev { display: block; max-width: 100%; margin: 10px auto 0; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.flow-rows { display: flex; flex-direction: column; gap: 6px; max-height: 32vh; overflow: auto; }
+.flow-row { display: flex; gap: 6px; align-items: center; }
+.flow-row select { width: 100px; flex: none; } .flow-row input { flex: 1; min-width: 0; }
+.flow-row .x { border: 0; background: none; color: var(--muted); width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer; }
+.flow-row .x svg { width: 15px; height: 15px; }
+#editor img.chart, #editor img.flow { max-width: 100%; height: auto; cursor: pointer; }
+/* pinch zoom: let our code handle two-finger zoom inside the document */
+#canvas { touch-action: pan-x pan-y; }
