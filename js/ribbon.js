@@ -59,7 +59,8 @@ const CMD = {
   marks: () => { document.body.classList.toggle('showmarks'); updateRibbonState(); },
   zoomIn: () => setZoom(Math.round((ui.zoom + 0.1) * 10) / 10), zoomOut: () => setZoom(Math.round((ui.zoom - 0.1) * 10) / 10),
   zoom100: () => setZoom(1), zoomPage: () => setZoom('page'), zoomWidth: () => setZoom('width'), zoomDialog: () => zoomDialog(),
-  toggleDark: () => { prefs.dark = !prefs.dark; savePrefs(); document.body.classList.toggle('dark', prefs.dark); updateRibbonState(); },
+  toggleDark: () => { prefs.dark = !prefs.dark; savePrefs(); document.body.classList.toggle('dark', prefs.dark); applyTheme(prefs.theme); updateRibbonState(); },
+  themes: () => openBackstage('options'),
   fullscreen: () => { if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); else toast('Full screen is not available here'); },
   dictate: () => toggleDictate(),
   paragraph: () => paragraphDialog(),
@@ -120,6 +121,7 @@ const MENUS = {
   reject: a => showMenu(a, [{ label: 'Reject and Move to Next', icon: 'X', fn: CMD.rejectCur }, { label: 'Reject All Changes', icon: 'Ban', fn: CMD.rejectAll }, { label: 'Reject All and Stop Tracking', fn: () => { CMD.rejectAll(); toggleTrack(false); } }]),
   deleteComment: a => showMenu(a, [{ label: 'Delete', fn: CMD.deleteComment }, { label: 'Delete All Comments in Document', fn: CMD.deleteAllComments }]),
   language: a => showMenu(a, [['en-IN', 'English (India)'], ['en-GB', 'English (UK)'], ['en-US', 'English (US)'], ['hi-IN', 'Hindi'], ['kn-IN', 'Kannada']].map(([c, l]) => ({ label: l, checked: (editor.lang || 'en-IN') === c, fn: () => { editor.lang = c; prefs.lang = c; savePrefs(); $('#stLang').textContent = l; editor.blur(); editor.focus(); } }))),
+  themeMenu: a => showMenu(a, [...Object.entries(THEMES).map(([k, t]) => ({ el: (() => { const b = h('button', { class: 'mi', type: 'button' }, h('span', { class: 'theme-dot', style: { background: t.tb } }), h('span', null, t.name), prefs.theme === k || (!prefs.theme && k === 'ocean') ? h('span', { style: { marginLeft: 'auto' }, html: icon('Check') }) : null); b.addEventListener('mousedown', e => e.preventDefault()); b.addEventListener('click', () => { closeMenu(); setTheme(k); }); return b; })() })), { sep: true }, { label: prefs.dark ? 'Turn off Dark Mode' : 'Dark Mode', icon: 'Moon', fn: CMD.toggleDark }]),
   zoomMenu: a => showMenu(a, [{ label: '100%', fn: CMD.zoom100 }, { label: 'One Page', fn: CMD.zoomPage }, { label: 'Page Width', fn: CMD.zoomWidth }, { sep: true }, { label: 'Zoom…', fn: zoomDialog }]),
   tblDelete: a => showMenu(a, [{ label: 'Delete Rows', fn: () => tableOp('delRow') }, { label: 'Delete Columns', fn: () => tableOp('delCol') }, { label: 'Delete Table', fn: () => tableOp('delTable') }]),
   tblShade: a => colorMenu(a, THEME_COLORS, c => tableOp('shade', c), 'No Colour'),
@@ -235,7 +237,7 @@ const TABS = [
     { label: 'Immersive', items: [big('Focus', 'Focus', 'focus'), big('Expand', 'Full Screen', 'fullscreen')] },
     { label: 'Show', items: [col(sbtn('Ruler', 'Ruler', 'ruler', { state: () => ui.ruler }), sbtn('Table', 'Gridlines', 'gridlines', { state: () => !document.body.classList.contains('nogrid') }), sbtn('ListTree', 'Navigation Pane', 'navPane', { state: () => !$('#navPane').classList.contains('hidden') }))] },
     { label: 'Zoom', items: [big('ZoomIn', 'Zoom', 'zoomDialog'), col(sbtn('Search', '100%', 'zoom100'), sbtn('File', 'One Page', 'zoomPage'), sbtn('Scaling', 'Page Width', 'zoomWidth'))] },
-    { label: 'Appearance', items: [big('Moon', 'Dark Mode', 'toggleDark', { state: () => prefs.dark }), big('Pilcrow', 'Formatting Marks', 'marks', { state: () => document.body.classList.contains('showmarks') })] }
+    { label: 'Appearance', items: [big('Palette', 'Theme', null, { menu: 'themeMenu' }), big('Moon', 'Dark Mode', 'toggleDark', { state: () => prefs.dark }), big('Pilcrow', 'Formatting Marks', 'marks', { state: () => document.body.classList.contains('showmarks') })] }
   ] },
   { id: 'tdesign', label: 'Table Design', ctx: 'table', groups: [
     { label: 'Table Style Options', items: [col(sbtn('Heading1', 'Header Row', null, { fn: () => toggleTableOpt('data-hr'), state: tableOptOn('data-hr') }), sbtn('Rows3', 'Banded Rows', null, { fn: () => toggleTableOpt('data-br'), state: tableOptOn('data-br') }), sbtn('Columns2', 'First Column', null, { fn: () => toggleTableOpt('data-fc'), state: tableOptOn('data-fc') }))] },

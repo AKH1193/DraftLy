@@ -515,6 +515,17 @@ const BACKSTAGE = {
     m.append(h('div', { class: 'form' }, h('label', null, 'Your name'), author, h('label', null, 'Style set for new documents'), set, h('label', null, 'Dark mode'), dark,
       FS_OK ? h('label', null, 'Keep saved .docx files up to date automatically') : null, FS_OK ? auto : null));
     await folderSection(m);
+    m.append(h('h3', null, 'Theme'));
+    const grid = h('div', { class: 'theme-grid' });
+    Object.entries(THEMES).forEach(([k, t]) => {
+      const card = h('button', { type: 'button', class: 'theme-card' + ((prefs.theme || 'ocean') === k ? ' on' : '') },
+        h('div', { class: 'tc-top', style: { background: t.tb, color: t.tbText || '#fff' } }, h('i'), h('b')),
+        h('div', { class: 'tc-body', style: { background: t.canvas } }, h('em', { style: { background: t.side } }), h('span')),
+        h('div', { class: 'tc-name' }, h('span', { style: { color: t.accent2 } }, '● '), t.name));
+      card.addEventListener('click', () => { setTheme(k); openBackstage('options'); });
+      grid.append(card);
+    });
+    m.append(grid);
     m.append(h('h3', null, 'About'), h('p', { class: 'note' }, 'DraftLy works offline. Documents are kept in this browser or app on each device' + (Sync.enabled ? ' and synced through your Firebase project.' : '.') + ' Device ID: ' + Sync.deviceId));
     m.append(h('h3', null, 'Reset'), h('button', { class: 'btn', onclick: async () => { if (confirm('Delete ALL DraftLy documents stored on this device? Synced copies stay in your Firebase project.')) { indexedDB.deleteDatabase('draftly'); localStorage.removeItem(PREFS_KEY); location.reload(); } } }, 'Clear this device'));
   }
@@ -604,6 +615,7 @@ Sync.on(async (type, data) => {
 /* ---------- startup ---------- */
 (async function init() {
   document.body.classList.toggle('dark', !!prefs.dark);
+  applyTheme(prefs.theme || 'ocean');
   try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { }
   editor.lang = prefs.lang || 'en-IN';
   Review.init(editor, () => prefs.author, () => afterChange());

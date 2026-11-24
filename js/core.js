@@ -32,6 +32,40 @@ const PREFS_KEY = 'draftly.prefs';
 const prefs = Object.assign({ author: 'Anirudh K H', styleSet: 'Default', dark: false, autosave: true, lastDoc: null, lang: 'en-IN' }, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'));
 const savePrefs = () => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 
+/* ---------- interface themes ---------- */
+const THEMES = {
+  ocean:    { name: 'Ocean',          tb: 'linear-gradient(120deg,#1B4F78,#2470A6)', side: '#1B4F78', accent: '#1F5F8B', accent2: '#2E7DB5', soft: '#E3EEF7', canvas: '#E9ECF0', ribbon: '#F7F9FB' },
+  burgundy: { name: 'Burgundy',       tb: 'linear-gradient(120deg,#5A1424,#8A2438)', side: '#5A1424', accent: '#7A1F33', accent2: '#A3263F', soft: '#F6E6EA', canvas: '#ECE7E8', ribbon: '#FBF8F8' },
+  emerald:  { name: 'Emerald',        tb: 'linear-gradient(120deg,#0C4A3E,#137A62)', side: '#0C4A3E', accent: '#0F5E4E', accent2: '#12866A', soft: '#E1F2EC', canvas: '#E6ECE9', ribbon: '#F7FAF9' },
+  royal:    { name: 'Royal Purple',   tb: 'linear-gradient(120deg,#2E1F66,#5236A8)', side: '#2E1F66', accent: '#3E2A88', accent2: '#6A4BD1', soft: '#ECE7FA', canvas: '#E9E7EF', ribbon: '#F9F8FC' },
+  ink:      { name: 'Ink & Gold',     tb: 'linear-gradient(120deg,#0E1116,#232A35)', side: '#11151B', accent: '#1C222C', accent2: '#B8901F', soft: '#F6EFD9', canvas: '#E7E6E3', ribbon: '#FAF9F6', tbText: '#F3D77A' },
+  graphite: { name: 'Graphite',       tb: 'linear-gradient(120deg,#2B2E35,#454A55)', side: '#2B2E35', accent: '#3A3E47', accent2: '#E07A2E', soft: '#FBEADF', canvas: '#E8E8EA', ribbon: '#F8F8F9' },
+  saffron:  { name: 'Saffron',        tb: 'linear-gradient(120deg,#9A3F05,#D46B08)', side: '#9A3F05', accent: '#B4530A', accent2: '#C9620A', soft: '#FCEBDA', canvas: '#EEE9E3', ribbon: '#FCFAF7' },
+  teal:     { name: 'Teal',           tb: 'linear-gradient(120deg,#0B5563,#138A9E)', side: '#0B5563', accent: '#0E6A7A', accent2: '#0F8EA3', soft: '#DFF2F5', canvas: '#E5ECED', ribbon: '#F7FAFB' },
+  rose:     { name: 'Rose',           tb: 'linear-gradient(120deg,#7D1F4E,#B33A74)', side: '#7D1F4E', accent: '#962A5E', accent2: '#C2417A', soft: '#F8E4EE', canvas: '#EEE8EB', ribbon: '#FCF9FA' },
+  forest:   { name: 'Forest',         tb: 'linear-gradient(120deg,#25402A,#3F6B45)', side: '#25402A', accent: '#2F5535', accent2: '#4C8A55', soft: '#E6F0E7', canvas: '#E8EBE6', ribbon: '#F9FAF8' },
+  slate:    { name: 'Slate',          tb: 'linear-gradient(120deg,#334155,#52637A)', side: '#334155', accent: '#3E4F66', accent2: '#4F7CC4', soft: '#E6EDF8', canvas: '#E8EAEE', ribbon: '#F8F9FB' },
+  paper:    { name: 'Paper (light)',  tb: '#F4F1EA', side: '#EAE5DA', accent: '#2F6F5E', accent2: '#2F6F5E', soft: '#E2EFEA', canvas: '#E9E5DC', ribbon: '#FBFAF6', tbText: '#2A2A2A', tbHover: 'rgba(0,0,0,.07)', light: true }
+};
+function applyTheme(name) {
+  const t = THEMES[name] || THEMES.ocean;
+  const dark = document.body.classList.contains('dark');
+  const r = document.documentElement.style;
+  const tb = dark && t.light ? '#2B2B2B' : t.tb;
+  r.setProperty('--tb-bg', tb);
+  r.setProperty('--side-bg', dark && t.light ? '#262626' : t.side);
+  r.setProperty('--tb-text', dark && t.light ? '#EDEDED' : (t.tbText || '#FFFFFF'));
+  r.setProperty('--tb-hover', dark && t.light ? 'rgba(255,255,255,.12)' : (t.tbHover || 'rgba(255,255,255,.16)'));
+  r.setProperty('--accent', t.accent);
+  r.setProperty('--accent-2', t.accent2);
+  r.setProperty('--accent-soft', t.soft);
+  r.setProperty('--canvas', t.canvas);
+  r.setProperty('--ribbon', t.ribbon);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark && t.light ? '#2B2B2B' : (t.tb.match(/#[0-9A-Fa-f]{6}/) || ['#1F5F8B'])[0]);
+}
+function setTheme(name) { prefs.theme = name; savePrefs(); applyTheme(name); if (typeof updateRibbonState === 'function') updateRibbonState(); }
+
 /* ---------- page geometry ---------- */
 const PAGE_PX = { A4: [793.7, 1122.5], Letter: [816, 1056], Legal: [816, 1344], A5: [559.4, 793.7], Executive: [696, 1008] };
 const GAP = 22;
