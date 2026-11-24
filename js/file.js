@@ -473,13 +473,24 @@ const BACKSTAGE = {
     const email = h('input', { type: 'email', value: pre.email || '', autocomplete: 'username' });
     const pass = h('input', { type: 'password', autocomplete: 'current-password' });
     const msg = h('div', { class: 'note' });
+    const linkIn = h('input', { placeholder: 'Paste the setup link from your Mac here', autocomplete: 'off', spellcheck: 'false' });
+    linkIn.addEventListener('input', () => {
+      const m = linkIn.value.match(/sync=([A-Za-z0-9+/=%_-]+)/);
+      if (!m) return;
+      try {
+        const c = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+        apiKey.value = c.apiKey || ''; dbUrl.value = c.dbUrl || ''; email.value = c.email || '';
+        msg.textContent = 'Setup details filled in. Type your password and tap Sign in.';
+        pass.focus();
+      } catch (e) { msg.textContent = 'That link could not be read. Copy it again from the Mac (File › Sync & Devices › Copy setup link).'; }
+    });
     const go = create => async () => {
       msg.textContent = 'Signing in…';
       try { await Sync.signIn({ apiKey: apiKey.value, dbUrl: dbUrl.value, email: email.value, password: pass.value, create }); toast('Sync is on'); if (location.hash.includes('sync=')) history.replaceState(null, '', location.pathname); openBackstage('sync'); }
       catch (e) { msg.textContent = e.message; }
     };
     m.append(h('div', { class: 'sync-status' }, h('b', null, 'Keep every document in sync across your Mac, iPhone, iPad and Android.'), h('div', null, 'Edits appear on your other open devices within a couple of seconds. Your documents are stored in your own free Firebase project, visible only to you.')));
-    m.append(h('div', { class: 'form' }, h('label', null, 'Firebase API key'), apiKey, h('label', null, 'Database URL'), dbUrl, h('label', null, 'Email'), email, h('label', null, 'Password'), pass, h('span'), h('div', { class: 'row', style: { display: 'flex', gap: '8px' } }, h('button', { class: 'btn primary', onclick: go(false) }, 'Sign in'), h('button', { class: 'btn', onclick: go(true) }, 'Create account (first device)'))), msg);
+    m.append(h('div', { class: 'form' }, h('label', null, 'Setup link (other devices)'), linkIn, h('label', null, 'Firebase API key'), apiKey, h('label', null, 'Database URL'), dbUrl, h('label', null, 'Email'), email, h('label', null, 'Password'), pass, h('span'), h('div', { class: 'row', style: { display: 'flex', gap: '8px' } }, h('button', { class: 'btn primary', onclick: go(false) }, 'Sign in'), h('button', { class: 'btn', onclick: go(true) }, 'Create account (first device)'))), msg);
     m.append(h('h3', null, 'One-time setup (about 10 minutes, on your Mac)'), h('div', { class: 'note', html: `<ol>
 <li>Go to <b>console.firebase.google.com</b>, sign in with your Google account, and click <b>Create a project</b> (name it "draftly"; Google Analytics is not needed).</li>
 <li>In the left menu open <b>Build › Authentication › Get started</b>, choose <b>Email/Password</b>, switch it on and save.</li>
@@ -572,6 +583,8 @@ async function mergeRemote(all) {
 }
 Sync.on(async (type, data) => {
   if (type === 'status') {
+    const on = $('.bs-side button.on');
+    if (on && /Sync/.test(on.textContent) && !$('#backstage').classList.contains('hidden') && !$('.bs-main input[type=password]')) openBackstage('sync');
     if (data === 'offline') setSaveState('Offline · saved on this device');
     else if (data === 'error') setSaveState('Sync needs sign-in');
     else if (data === 'live' && doc && (doc.syncedAt || 0) >= doc.modified) setSaveState('Saved · synced');
