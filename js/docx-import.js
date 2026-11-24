@@ -559,7 +559,6 @@ const DocxImport = (() => {
       }
       const mg = child(sect, 'pgMar');
       if (mg) settings.margins = { top: Math.abs(+attr(mg, 'top') || 1440) / 1440, bottom: Math.abs(+attr(mg, 'bottom') || 1440) / 1440, left: (+attr(mg, 'left') || 1440) / 1440, right: (+attr(mg, 'right') || 1440) / 1440 };
-      settings.differentFirst = !!child(sect, 'titlePg') && on(child(sect, 'titlePg'));
       const hfHtml = async (relId) => {
         const rel = docRels[relId]; if (!rel) return '';
         const d = await readXml(rel.path); if (!d) return '';
@@ -572,16 +571,20 @@ const DocxImport = (() => {
         for (const p of [...root.getElementsByTagNameNS('*', 'p')]) if (desc(p, 'textpath')) p.parentNode.removeChild(p);
         return blocks(kids(root), { rels }, newState()).replace(/^<p><br><\/p>$/, '');
       };
-      for (const ref of kids(sect, 'headerReference')) {
-        const t = attr(ref, 'type');
-        if (t === 'default') settings.header = await hfHtml(rid(ref, 'id'));
-        if (t === 'first') settings.firstHeader = await hfHtml(rid(ref, 'id'));
-      }
-      for (const ref of kids(sect, 'footerReference')) {
-        const t = attr(ref, 'type');
-        if (t === 'default') settings.footer = await hfHtml(rid(ref, 'id'));
-        if (t === 'first') settings.firstFooter = await hfHtml(rid(ref, 'id'));
-      }
+      // Word documents with several sections often define headers/footers only in the first section and
+      // let later sections inherit them. Page 1 belongs to the first section, so prefer its references,
+      // then fall back to the first later section that defines one.
+      const allSects = [...body.getElementsByTagNameNS('*', 'sectPr')].filter(x => x.parentNode && (x.parentNode.localName === 'pPr' || x.parentNode === body));
+      const firstSect = allSects[0] || sect;
+      const pick = (tag, type) => { for (const sp of allSects) { const ref = kids(sp, tag).find(r => attr(r, 'type') === type); if (ref) return rid(ref, 'id'); } return null; };
+      const hd = pick('headerReference', 'default'), hf = pick('headerReference', 'first'), fd = pick('footerReference', 'default'), ff = pick('footerReference', 'first');
+      if (hd) settings.header = await hfHtml(hd);
+      if (hf) settings.firstHeader = await hfHtml(hf);
+      if (fd) settings.footer = await hfHtml(fd);
+      if (ff) settings.firstFooter = await hfHtml(ff);
+      const tp = child(firstSect, 'titlePg');
+      settings.differentFirst = !!tp && on(tp);
+      if (settings.differentFirst && !hf && !ff) settings.differentFirst = false;
     }
     const bg = desc(docXml, 'background');
     if (bg && attr(bg, 'color') && attr(bg, 'color') !== 'auto') settings.pageColor = '#' + attr(bg, 'color');

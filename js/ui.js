@@ -121,7 +121,31 @@ editor.addEventListener('mouseup', () => { if (painter) setTimeout(applyPainter,
 editor.addEventListener('touchend', () => { if (painter) setTimeout(applyPainter, 300); });
 editor.addEventListener('dblclick', e => { const img = e.target.closest && e.target.closest('img'); if (img) altTextDialog(img); });
 $('#footnoteArea').addEventListener('click', e => { const it = e.target.closest('.fn-item'); if (it) { const n = $$('sup.fn', editor)[+it.getAttribute('data-i')]; n && editFootnote(n); } });
-$('#sheets').addEventListener('dblclick', e => { if (e.target.closest('.hf')) headerFooterDialog(e.target.closest('.ftr') ? 'footer' : 'header'); });
+/* header/footer zones: double-click (or tap on touch screens) in the top or bottom margin of a page, like Word */
+function hfZoneAt(e) {
+  if (ui.view !== 'print' || ui.printing) return null;
+  const pr = $('#pages').getBoundingClientRect();
+  const g = geom(), stride = g.ph + GAP;
+  const y = (e.clientY - pr.top) / ui.zoom, x = (e.clientX - pr.left) / ui.zoom;
+  if (x < 0 || x > g.pw || y < 0) return null;
+  const page = Math.floor(y / stride), yIn = y - page * stride;
+  if (yIn > g.ph) return null;
+  const first = page === 0 && doc.settings.differentFirst;
+  if (yIn < g.mt - 4) return first ? 'firstHeader' : 'header';
+  if (yIn > g.ph - g.mb + 4) return first ? 'firstFooter' : 'footer';
+  return null;
+}
+$('#pages').addEventListener('dblclick', e => {
+  const z = hfZoneAt(e);
+  if (!z) return;
+  e.preventDefault(); e.stopPropagation();
+  headerFooterDialog(z);
+}, true);
+$('#pages').addEventListener('pointerup', e => {
+  if (e.pointerType !== 'touch') return;
+  const z = hfZoneAt(e);
+  if (z) { e.preventDefault(); headerFooterDialog(z); }
+}, true);
 $('#canvas').addEventListener('mousedown', e => {
   if (e.target.id === 'canvas' || e.target.id === 'scaler' || e.target.id === 'pages' || e.target.classList.contains('sheet')) {
     if (e.target.closest('.hf')) return;

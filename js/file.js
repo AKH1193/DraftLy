@@ -98,6 +98,23 @@ async function openFileObject(file, handle) {
     else if (ext === 'html' || ext === 'htm') opts = { title: name.replace(/\.[^.]+$/, ''), html: sanitizeHtml(await file.text(), false) };
     else if (ext === 'md') opts = { title: name.replace(/\.[^.]+$/, ''), html: mdToHtml(await file.text()) };
     else opts = { title: name.replace(/\.[^.]+$/, ''), html: (await file.text()).replace(/\r\n?/g, '\n').split('\n').map(l => `<p>${esc(l) || '<br>'}</p>`).join('') };
+    // reopening the same file (e.g. double-click in Finder) refreshes its existing copy instead of making a duplicate
+    if (handle && ext === 'docx' && handle.isSameEntry) {
+      for (const old of await Store.all()) {
+        const h2 = await KV.get('fh:' + old.id);
+        let same = false;
+        try { same = !!(h2 && await h2.isSameEntry(handle)); } catch (e) { }
+        if (!same) continue;
+        const rec = Object.assign({}, old, { title: opts.title, html: opts.html, settings: Object.assign(DEFAULT_SETTINGS(), opts.settings || {}), comments: opts.comments || {}, modified: Date.now(), stub: false });
+        await Store.put(rec);
+        await loadDoc(rec);
+        fileHandles[rec.id] = handle;
+        if (Sync.enabled) Sync.push(record(), true);
+        closeBackstage();
+        toast('Opened ' + name);
+        return;
+      }
+    }
     const d = await newDoc(opts);
     if (handle && ext === 'docx') { fileHandles[d.id] = handle; KV.set('fh:' + d.id, handle); }
     toast('Opened ' + name);
