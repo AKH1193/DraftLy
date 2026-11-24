@@ -237,6 +237,7 @@ async function saveBlob(blob, name, key) {
     const data = await blobToBase64(blob);
     try {
       await capCall('Filesystem', 'writeFile', { path: 'DraftLy/' + name, data, directory: 'DOCUMENTS', recursive: true });
+      if (key && /\.docx$/.test(name)) KV.set('nname:' + key.replace(/\.docx$/, ''), name);
       toast('Saved to Documents/DraftLy/' + name, 4000);
       return;
     } catch (e) {
@@ -278,7 +279,8 @@ function pdfReadyDialog(blob, name, forPrint) {
 async function exportAs(fmt) {
   await persist(true);
   const base = safeName(doc.title);
-  await SaveFolder.get(true); // ask for the folder while we still have the click
+  const dir = await SaveFolder.get(true); // ask for the folder while we still have the click
+  if (FS_OK && !IS_NATIVE && !dir) { toast('Not saved. Your work is still kept in DraftLy.', 4000); return; }
   try {
     if (fmt === 'docx') return saveBlob(await buildDocx(), base + '.docx', doc.id + '.docx');
     if (fmt === 'html') return saveBlob(new Blob([buildHtml()], { type: 'text/html' }), base + '.html', doc.id + '.html');
@@ -305,7 +307,10 @@ CMD.save = async () => {
       let p = await hnd.queryPermission({ mode: 'readwrite' });
       if (p !== 'granted') p = await hnd.requestPermission({ mode: 'readwrite' });
       if (p === 'granted') { const w = await hnd.createWritable(); await w.write(await buildDocx()); await w.close(); fileHandles[doc.id] = hnd; toast('Saved ' + hnd.name); return; }
-    } catch (e) { }
+      // you pressed Cancel: leave the file alone and do not download a copy
+      toast('Not saved to ' + hnd.name + '. Your work is still kept in DraftLy.', 4500);
+      return;
+    } catch (e) { if (e.name === 'AbortError' || e.name === 'NotAllowedError') { toast('Not saved to the file. Your work is still kept in DraftLy.', 4500); return; } }
   }
   exportAs('docx');
 };
@@ -313,21 +318,47 @@ CMD.savePdf = () => exportAs('pdf');
 /* keep the .docx in the save folder up to date automatically (only once permission exists) */
 let folderTimer = null;
 function scheduleFolderCopy() {
-  if (!FS_OK || prefs.autoDocx === false || IS_NATIVE) return;
+  if (prefs.autoDocx === false || !doc || (!FS_OK && !IS_NATIVE)) return;
   clearTimeout(folderTimer);
-  folderTimer = setTimeout(async () => {
-    if (!doc) return;
-    const saved = await KV.get('name:' + doc.id + '.docx');
-    const hnd = fileHandles[doc.id];
-    if (!saved && !hnd) return; // only documents you've saved once
-    try {
-      const data = await buildDocx({ background: true });
-      if (!data) return;
-      if (hnd && (await hnd.queryPermission({ mode: 'readwrite' })) === 'granted') { const w = await hnd.createWritable(); await w.write(data); await w.close(); return; }
-      const dir = await SaveFolder.get(false);
-      if (dir && saved) await SaveFolder.write(dir, saved, data, doc.id + '.docx');
-    } catch (e) { }
-  }, 8000);
+  folderTimer = setTimeout(() => autoSaveNow(false), 3000);
+}
+/* AutoSave: write this document's Word file now (only once it has been saved as a file) */
+async function autoSaveNow(ask) {
+  if (!doc) return 'none';
+  const id = doc.id;
+  try {
+    if (IS_NATIVE) {
+      const nm = await KV.get('nname:' + id);
+      if (!nm) return 'none';
+      const blob = await buildDocx({ background: true }); if (!blob) return 'none';
+      await capCall('Filesystem', 'writeFile', { path: 'DraftLy/' + nm, data: await blobToBase64(blob), directory: 'DOCUMENTS', recursive: true });
+      if (doc && doc.id === id) setSaveState('AutoSaved · ' + nm);
+      return 'ok';
+    }
+    const t = await docxTarget(id, ask);
+    if (t === 'none') return 'none';
+    if (t === 'perm') { permDocx.add(id); showDocxBar(); return 'perm'; }
+    const blob = await buildDocx({ background: true }); if (!blob) return 'none';
+    const nm = await t(blob);
+    permDocx.delete(id); showDocxBar();
+    if (doc && doc.id === id) setSaveState('AutoSaved · ' + nm);
+    return 'ok';
+  } catch (e) { console.warn('autosave', e); return 'none'; }
+}
+function renderAutoSave() {
+  const b = $('#autoSave'); if (!b) return;
+  b.classList.toggle('hidden', !FS_OK && !IS_NATIVE);
+  const on = prefs.autoDocx !== false;
+  b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  b.title = on ? 'AutoSave is on: the Word file is updated a few seconds after each change' : 'AutoSave is off: click Save to update the Word file';
+}
+async function toggleAutoSave() {
+  const on = prefs.autoDocx === false;
+  prefs.autoDocx = on; savePrefs(); renderAutoSave();
+  if (!on) { clearTimeout(folderTimer); return toast('AutoSave is off. Click Save to update the Word file. DraftLy still keeps your work and syncs it.', 5000); }
+  const r = await autoSaveNow(true);
+  if (r === 'none') { toast('Choose where to save this document. AutoSave will then keep it up to date.', 4000); await CMD.save(); }
+  else toast('AutoSave is on. The Word file is updated a few seconds after each change.', 4000);
 }
 /* Mac: when another device edits a document, rewrite its Word file in the save folder too */
 const pendingDocx = new Set(), permDocx = new Set();
@@ -393,7 +424,7 @@ function showDocxBar() {
   let bar = $('#docxBar');
   if (!permDocx.size) { if (bar) bar.remove(); return; }
   const n = permDocx.size;
-  const msg = `${n} document${n > 1 ? 's were' : ' was'} edited on another device. Update the Word file${n > 1 ? 's' : ''} in ${prefs.saveDirName || 'your folder'}?`;
+  const msg = `AutoSave needs your OK to update ${n > 1 ? n + ' Word files' : 'the Word file'} in ${prefs.saveDirName || 'your folder'}.`;
   if (!bar) {
     bar = h('div', { id: 'docxBar', class: 'docx-bar' }, h('span', { class: 'msg' }),
       h('button', { class: 'btn primary', type: 'button', onclick: () => flushDocxRefresh(true) }, 'Update'),
@@ -650,7 +681,7 @@ const BACKSTAGE = {
     const dark = h('input', { type: 'checkbox', style: { width: '20px' } }); dark.checked = prefs.dark;
     dark.addEventListener('change', () => CMD.toggleDark());
     const auto = h('input', { type: 'checkbox', style: { width: '20px' } }); auto.checked = prefs.autoDocx !== false;
-    auto.addEventListener('change', () => { prefs.autoDocx = auto.checked; savePrefs(); });
+    auto.addEventListener('change', () => { prefs.autoDocx = auto.checked; savePrefs(); renderAutoSave(); });
     m.append(h('div', { class: 'form' }, h('label', null, 'Your name'), author, h('label', null, 'Style set for new documents'), set, h('label', null, 'Dark mode'), dark,
       FS_OK ? h('label', null, 'Keep saved .docx files up to date automatically') : null, FS_OK ? auto : null,
       h('label', null, 'Sound when DraftLy opens'), (() => { const c = h('input', { type: 'checkbox', style: { width: '20px' } }); c.checked = prefs.launchSound !== false; c.addEventListener('change', () => { prefs.launchSound = c.checked; savePrefs(); }); return c; })()));
@@ -769,6 +800,7 @@ Sync.on(async (type, data) => {
     b.addEventListener('mousedown', e => e.preventDefault());
     b.addEventListener('click', () => CMD[b.dataset.cmd] && CMD[b.dataset.cmd]());
   });
+  $('#autoSave').addEventListener('mousedown', e => e.preventDefault()); $('#autoSave').addEventListener('click', toggleAutoSave); renderAutoSave();
   $('#ribbon').addEventListener('mousedown', e => { if (!/INPUT|SELECT|TEXTAREA|OPTION/.test(e.target.tagName)) e.preventDefault(); });
   $('#zoomRange').addEventListener('input', e => { ui.fitWidth = false; setZoom(+e.target.value / 100); });
   $('#docTitle').addEventListener('change', e => { doc.title = e.target.value.trim() || 'Document'; e.target.value = doc.title; document.title = doc.title + ' · DraftLy'; markDirty(); });
