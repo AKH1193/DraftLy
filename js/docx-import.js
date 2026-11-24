@@ -20,6 +20,17 @@ const DocxImport = (() => {
   const xml = s => new DOMParser().parseFromString(s, 'application/xml');
 
   async function parse(buf, fileName) {
+    let password = null;
+    if (typeof CFB !== 'undefined' && CFB.isCFB(buf)) {
+      const r = await Protect.openEncrypted(buf, fileName);
+      if (!r) return null;
+      buf = r.bytes.buffer.slice(r.bytes.byteOffset, r.bytes.byteOffset + r.bytes.byteLength); password = r.password;
+    }
+    const res = await parseZip(buf, fileName);
+    if (password) { res.password = password; res.settings.encrypted = true; }
+    return res;
+  }
+  async function parseZip(buf, fileName) {
     const z = await Zip.read(buf);
     const readXml = async p => { const t = await z.text(p); return t ? xml(t) : null; };
     const relsOf = async partPath => {
@@ -254,6 +265,8 @@ const DocxImport = (() => {
             if (m) { fld.suppress = true; html += m[1].toUpperCase() === 'PAGE' ? '{PAGE}' : '{NUMPAGES}'; }
             const hl = ins.match(/^HYPERLINK\s+"([^"]+)"/i);
             if (hl) fld.link = hl[1];
+            const xr = ins.match(/^(REF|PAGEREF)\s+(\S+)/i);
+            if (xr && !/^_Toc/i.test(xr[2])) { fld.suppress = true; const kind = xr[1].toUpperCase() === 'REF' ? 'text' : /\\p\b/.test(ins) ? 'pos' : 'page'; html += `<span class="xref" contenteditable="false" data-ref="${esc(xr[2])}" data-kind="${kind}">?</span>`; }
             const mf = ins.match(/^MERGEFIELD\s+(?:"([^"]+)"|(\S+))/i);
             if (mf) { fld.suppress = true; const nm = mf[1] || mf[2]; html += `<span class="mf" contenteditable="false" data-f="${esc(nm)}">«${esc(nm)}»</span>`; }
           } else if (t === 'end') {
@@ -279,7 +292,7 @@ const DocxImport = (() => {
           case 'drawing': case 'pict': case 'object': html += imgFrom(c, part) || textboxFrom(c, part, st); break;
           case 'footnoteReference': case 'endnoteReference': {
             const key = (ln === 'footnoteReference' ? 'footnote' : 'endnote') + attr(c, 'id');
-            html += `<sup class="fn" contenteditable="false" data-note="${esc(notes[key] || '')}"></sup>`;
+            html += `<sup class="fn${ln === 'endnoteReference' ? ' en' : ''}" contenteditable="false" data-note="${esc(notes[key] || '')}"></sup>`;
             break;
           }
           case 'AlternateContent': { const ch = child(c, 'Choice') || child(c, 'Fallback'); if (ch) html += imgFrom(ch, part) || textboxFrom(ch, part, st); break; }
@@ -316,6 +329,7 @@ const DocxImport = (() => {
             break;
           }
           case 'commentRangeStart': st.active.add(attr(n, 'id')); break;
+          case 'bookmarkStart': { const nm = attr(n, 'name') || ''; if (nm && nm !== '_GoBack' && !/^_Toc/i.test(nm)) html += `<span class="bm" contenteditable="false" data-bm="${esc(nm)}"></span>`; break; }
           case 'commentRangeEnd': st.active.delete(attr(n, 'id')); break;
           case 'fldSimple': {
             const ins = (attr(n, 'instr') || '').trim();
@@ -640,6 +654,10 @@ const DocxImport = (() => {
     else if (themeFonts.major) theme.headingFont = themeFonts.major;
     settings.theme = theme;
 
+    const setP = relFile('settings');
+    const sx = setP ? await readXml(setP) : null;
+    const dp = sx && desc(sx, 'documentProtection');
+    if (dp) { const ed = attr(dp, 'edit'), en = attr(dp, 'enforcement'); if ((en === '1' || en === 'true' || en === 'on') && ed && ed !== 'none') settings.restrict = { mode: ed === 'trackedChanges' ? 'trackedChanges' : ed === 'comments' ? 'comments' : 'readOnly', fromWord: !!(attr(dp, 'hash') || attr(dp, 'hashValue')) }; }
     let title = '';
     const core = await readXml('docProps/core.xml');
     if (core) { const t = desc(core, 'title'); if (t) title = t.textContent.trim(); }

@@ -51,7 +51,7 @@ const CMD = {
   selectAll: () => { editor.focus(); document.execCommand('selectAll'); },
   spelling: () => { editor.spellcheck = !editor.spellcheck; editor.blur(); editor.focus(); toast(editor.spellcheck ? 'Spelling check on' : 'Spelling check off'); updateRibbonState(); },
   wordCount: () => wordCountDialog(),
-  restrict: () => { ui.readonly = !ui.readonly; editor.contentEditable = ui.readonly ? 'false' : 'true'; editor.classList.toggle('readonly', ui.readonly); toast(ui.readonly ? 'Editing restricted: the document is read-only' : 'Editing enabled'); updateRibbonState(); },
+  restrict: () => restrictDialog(),
   userName: () => ask('User Name', 'Your name (used for comments and tracked changes)', prefs.author).then(v => { if (v) { prefs.author = v.trim(); savePrefs(); toast('Name set to ' + prefs.author); } }),
   readMode: () => setView('read'), printLayout: () => setView('print'), webLayout: () => setView('web'), focus: () => setView('focus'),
   ruler: () => { ui.ruler = !ui.ruler; prefs.ruler = ui.ruler; savePrefs(); updateRuler(); updateRibbonState(); },
@@ -213,7 +213,7 @@ const TABS = [
     { label: 'Pages', items: [big('LayoutTemplate', 'Cover Page', null, { menu: 'coverMenu' }), big('FilePlus', 'Blank Page', null, { fn: insertBlankPage }), big('SeparatorHorizontal', 'Page Break', 'pageBreak')] },
     { label: 'Tables', items: [big('Table', 'Table', null, { menu: 'table' })] },
     { label: 'Illustrations', items: [big('Image', 'Pictures', 'picture'), big('Minus', 'Horizontal Line', 'hr')] },
-    { label: 'Links', items: [big('Link', 'Link', 'link')] },
+    { label: 'Links', items: [big('Link', 'Link', 'link'), big('Bookmark', 'Bookmark', null, { fn: bookmarkDialog }), big('Link2', 'Cross-reference', null, { fn: xrefDialog })] },
     { label: 'Comments', items: [big('MessageSquarePlus', 'Comment', 'comment')] },
     { label: 'Header & Footer', items: [big('PanelTop', 'Header', 'headerFooter'), big('PanelBottom', 'Footer', 'footerEdit'), big('Hash', 'Page Number', null, { menu: 'pageNumber' })] },
     { label: 'Text', items: [big('RectangleEllipsis', 'Text Box', null, { menu: 'textBox' }), big('CaseUpper', 'Drop Cap', null, { menu: 'dropCap' }), big('Calendar', 'Date & Time', 'date'), big('LetterText', 'Signature Line', 'signature')] },
@@ -232,7 +232,8 @@ const TABS = [
   ] },
   { id: 'references', label: 'References', groups: [
     { label: 'Table of Contents', items: [big('TableOfContents', 'Table of Contents', null, { menu: 'tocMenu' }), col(sbtn('Heading1', 'Add Text', null, { menu: 'addText' }), sbtn('History', 'Update Table', 'tocUpdate'))] },
-    { label: 'Footnotes', items: [big('Footprints', 'Insert Footnote', 'footnote')] }
+    { label: 'Footnotes', items: [big('Footprints', 'Insert Footnote', 'footnote'), big('StickyNote', 'Insert Endnote', null, { fn: () => insertFootnote(true) })] },
+    { label: 'Captions', items: [big('Link2', 'Cross-reference', null, { fn: xrefDialog }), big('Bookmark', 'Bookmark', null, { fn: bookmarkDialog })] }
   ] },
   { id: 'mailings', label: 'Mailings', groups: [
     { label: 'Start Mail Merge', items: [big('Users', 'Select Recipients', null, { menu: 'mergeRecipients' }), big('Mails', 'Edit Recipient List', null, { fn: editRecipients })] },
@@ -247,7 +248,7 @@ const TABS = [
     { label: 'Tracking', items: [big('FileDiff', 'Track Changes', 'track', { state: () => Review.isTracking() }), col(sbtn('Eye', 'Markup', null, { menu: 'markup' }), sbtn('PanelRight', 'Reviewing Pane', 'reviewPane', { state: () => !$('#changesPane').classList.contains('hidden') }), sbtn('User', 'Change User Name', 'userName'))] },
     { label: 'Changes', items: [big('CircleCheck', 'Accept', 'acceptCur', { menu: 'accept', splitBig: true }), big('CircleX', 'Reject', 'rejectCur', { menu: 'reject', splitBig: true }), col(sbtn('ArrowUp', 'Previous', 'prevChange'), sbtn('ArrowDown', 'Next', 'nextChange'))] },
     { label: 'Compare', items: [big('GitCompareArrows', 'Compare', null, { fn: compareDialog })] },
-    { label: 'Protect', items: [big('Lock', 'Restrict Editing', 'restrict', { state: () => ui.readonly })] }
+    { label: 'Protect', items: [big('Lock', 'Restrict Editing', 'restrict', { state: () => !!(doc && doc.settings.restrict) }), big('KeyRound', 'Password', null, { fn: encryptDialog, state: () => !!(doc && doc.settings.encrypted) }), big('ScanSearch', 'Inspect', null, { fn: inspectDialog })] }
   ] },
   { id: 'view', label: 'View', groups: [
     { label: 'Views', items: [big('BookOpen', 'Read Mode', 'readMode'), big('FileText', 'Print Layout', 'printLayout', { state: () => ui.view === 'print' && !document.body.classList.contains('focus') }), big('Globe', 'Web Layout', 'webLayout', { state: () => ui.view === 'web' && !document.body.classList.contains('read') && !document.body.classList.contains('outline') }), big('ListCollapse', 'Outline', null, { fn: () => showOutline(!document.body.classList.contains('outline')), state: () => document.body.classList.contains('outline') })] },

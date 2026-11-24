@@ -45,6 +45,7 @@ async function loadDoc(d) {
   applyDocStyles();
   Review.setTracking(!!s.trackChanges);
   $('#stTrack').classList.toggle('hidden', !s.trackChanges);
+  if (typeof applyRestriction === 'function') applyRestriction();
   selectImage(null);
   if ($('.toc[data-regen]', editor)) { $$('.toc[data-regen]', editor).forEach(t => t.removeAttribute('data-regen')); requestAnimationFrame(() => updateTOC()); }
   prefs.lastDoc = doc.id; savePrefs();
@@ -94,7 +95,8 @@ async function openFileObject(file, handle) {
     let opts;
     if (ext === 'docx' || ext === 'docm' || ext === 'dotx') {
       const r = await DocxImport.parse(await file.arrayBuffer(), name);
-      opts = { title: r.title, html: r.html, settings: r.settings, comments: r.comments };
+      if (r === null) return; // password prompt cancelled
+      opts = { title: r.title, html: r.html, settings: r.settings, comments: r.comments, password: r.password };
     } else if (ext === 'doc') { return toast('Old .doc files are not supported. Open it in Word or Google Docs and save as .docx first.', 5000); }
     else if (ext === 'html' || ext === 'htm') opts = { title: name.replace(/\.[^.]+$/, ''), html: sanitizeHtml(await file.text(), false) };
     else if (ext === 'md') opts = { title: name.replace(/\.[^.]+$/, ''), html: mdToHtml(await file.text()) };
@@ -108,6 +110,7 @@ async function openFileObject(file, handle) {
         if (!same) continue;
         const rec = Object.assign({}, old, { title: opts.title, html: opts.html, settings: Object.assign(DEFAULT_SETTINGS(), opts.settings || {}), comments: opts.comments || {}, modified: Date.now(), stub: false });
         await Store.put(rec);
+        if (opts.password) Protect.remember(rec.id, opts.password);
         await loadDoc(rec);
         fileHandles[rec.id] = handle;
         if (Sync.enabled) Sync.push(record(), true);
@@ -117,6 +120,7 @@ async function openFileObject(file, handle) {
       }
     }
     const d = await newDoc(opts);
+    if (opts.password) Protect.remember(d.id, opts.password);
     if (handle && ext === 'docx') { fileHandles[d.id] = handle; KV.set('fh:' + d.id, handle); }
     toast('Opened ' + name);
   } catch (e) { console.error(e); toast('Could not open the file: ' + e.message, 5000); }
@@ -142,8 +146,15 @@ function mdToHtml(md) {
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const IOS_STANDALONE = IS_IOS && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
 const safeName = t => (t || 'Document').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Document';
-async function buildDocx() {
-  return DocxExport.build({ root: editor, settings: doc.settings, comments: doc.comments, theme: doc.settings.theme, title: doc.title, author: prefs.author, trackChanges: Review.isTracking(), created: doc.created });
+async function buildDocx(opts = {}) {
+  const blob = await buildDocxPlain();
+  if (!doc.settings.encrypted || typeof Protect === 'undefined') return blob;
+  const pw = await Protect.passwordFor(doc.id, opts.background);
+  if (!pw) { if (opts.background) return null; throw new Error('the password is needed to save this protected document'); }
+  return new Blob([await OfficeCrypto.encrypt(new Uint8Array(await blob.arrayBuffer()), pw)], { type: DOCX_MIME });
+}
+async function buildDocxPlain() {
+  return DocxExport.build({ root: editor, settings: doc.settings, comments: doc.comments, theme: doc.settings.theme, title: doc.title, author: prefs.author, trackChanges: Review.isTracking(), created: doc.created, anonymous: !!doc.settings.anonymous });
 }
 function buildHtml() {
   const g = geom();
@@ -310,9 +321,11 @@ function scheduleFolderCopy() {
     const hnd = fileHandles[doc.id];
     if (!saved && !hnd) return; // only documents you've saved once
     try {
-      if (hnd && (await hnd.queryPermission({ mode: 'readwrite' })) === 'granted') { const w = await hnd.createWritable(); await w.write(await buildDocx()); await w.close(); return; }
+      const data = await buildDocx({ background: true });
+      if (!data) return;
+      if (hnd && (await hnd.queryPermission({ mode: 'readwrite' })) === 'granted') { const w = await hnd.createWritable(); await w.write(data); await w.close(); return; }
       const dir = await SaveFolder.get(false);
-      if (dir && saved) await SaveFolder.write(dir, saved, await buildDocx(), doc.id + '.docx');
+      if (dir && saved) await SaveFolder.write(dir, saved, data, doc.id + '.docx');
     } catch (e) { }
   }, 8000);
 }
@@ -479,7 +492,11 @@ const BACKSTAGE = {
     const title = h('input', { value: doc.title });
     title.addEventListener('change', () => { doc.title = title.value.trim() || 'Document'; $('#docTitle').value = doc.title; markDirty(); });
     m.append(h('div', { class: 'form' }, h('label', null, 'Title'), title, h('label', null, 'Author'), h('span', null, prefs.author), h('label', null, 'Created'), h('span', null, new Date(doc.created).toLocaleString('en-IN')), h('label', null, 'Last modified'), h('span', null, new Date(doc.modified).toLocaleString('en-IN')), h('label', null, 'Pages'), h('span', null, String(ui.pages)), h('label', null, 'Words'), h('span', null, countWords(t).toLocaleString('en-IN')), h('label', null, 'Comments'), h('span', null, String(Review.commentIds().length)), h('label', null, 'Tracked changes'), h('span', null, String(Review.changes().length))));
-    m.append(h('h3', null, 'Inspect document'), h('p', { class: 'note' }, 'Before sending a document, accept or reject all tracked changes and delete comments (Review tab) so they are not visible to the recipient.'));
+    const act = (ic, t, sub, fn) => h('button', { class: 'bs-act', type: 'button', onclick: () => { closeBackstage(); setTimeout(fn, 50); } }, h('span', { class: 'ic', html: icon(ic) }), h('b', null, t), h('small', null, sub));
+    m.append(h('h3', null, 'Protect Document'), h('div', { class: 'bs-actions' },
+      act(doc.settings.encrypted ? 'FileLock' : 'KeyRound', doc.settings.encrypted ? 'Password: On' : 'Encrypt with Password', doc.settings.encrypted ? 'Change or remove the password' : 'Word file needs a password to open', encryptDialog),
+      act('Lock', doc.settings.restrict ? 'Editing Restricted' : 'Restrict Editing', doc.settings.restrict ? 'Stop protection' : 'Read only, or tracked changes only', restrictDialog)));
+    m.append(h('h3', null, 'Inspect Document'), h('div', { class: 'bs-actions' }, act('ScanSearch', 'Check for Issues', 'Comments, changes, personal info, hidden data', inspectDialog)));
   },
   async save(m) {
     m.append(h('h2', null, 'Save'), h('p', { class: 'note' }, 'DraftLy saves your work automatically on this device' + (Sync.enabled ? ' and syncs it to your other devices.' : '.') + ' Save writes a Word file (.docx).'));

@@ -222,8 +222,10 @@ function parseCSV(text) {
   return rows.filter(r => r.some(x => x.trim()));
 }
 async function parseXLSX(buf) {
-  const files = await Zip.read(buf);
-  const txt = p => files[p] ? new TextDecoder().decode(files[p]) : '';
+  const z = await Zip.read(buf);
+  const cache = {};
+  for (const p of ['xl/sharedStrings.xml', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml']) cache[p] = (await z.text(p)) || '';
+  const txt = p => cache[p] || '';
   const X = s => new DOMParser().parseFromString(s, 'application/xml');
   const ss = [...X(txt('xl/sharedStrings.xml')).getElementsByTagNameNS('*', 'si')].map(si => [...si.getElementsByTagNameNS('*', 't')].map(t => t.textContent).join(''));
   // first worksheet in workbook order
@@ -238,6 +240,7 @@ async function parseXLSX(buf) {
   const isDate = s => { const id = xfs[+s]; if (id == null) return false; if ((id >= 14 && id <= 22) || (id >= 45 && id <= 47)) return true; const f = custom[id]; return !!f && /[dy]/i.test(f.replace(/\[[^\]]*\]|"[^"]*"/g, '')); };
   const fmtDate = v => { const d = new Date(Math.round((v - 25569) * 864e5)); return [String(d.getUTCDate()).padStart(2, '0'), String(d.getUTCMonth() + 1).padStart(2, '0'), d.getUTCFullYear()].join('.'); };
   const col = ref => { let n = 0; for (const ch of ref.replace(/\d+/g, '')) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  cache[sheet] = (await z.text(sheet)) || '';
   const rows = [];
   for (const r of X(txt(sheet)).getElementsByTagNameNS('*', 'row')) {
     const out = [];

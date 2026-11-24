@@ -416,3 +416,17 @@ body.printing #editor span.mf { background: none; }
 .merge-rec { min-width: 54px; text-align: center; font-size: 12px; align-self: center; }
 .merge-src { color: var(--muted); font-size: 11px; padding: 2px 4px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.rcp { border-collapse: collapse; font-size: 12px; } table.rcp th, table.rcp td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; white-space: nowrap; }
+/* protection, inspect, bookmarks, cross-references, endnotes */
+.modal .err { color: #c42b1c; font-size: 13px; margin: 4px 0; }
+.inspect .ins-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.inspect .ins-row > div { flex: 1; }
+.inspect .ins-row .btn { flex: none; }
+.ins-st { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
+.ins-st.ok { background: #e3f4e8; color: #1e7b34; } .ins-st.warn { background: #fff1d6; color: #9a6700; }
+#editor span.xref { background: #eef1f5; border-radius: 2px; cursor: default; }
+body.printing #editor span.xref { background: none; }
+body.showmarks #editor span.bm:empty::before { content: 'I'; color: #888; font-weight: 300; }
+body.showmarks #editor span.bm:not(:empty)::before { content: '['; color: #888; }
+body.showmarks #editor span.bm:not(:empty)::after { content: ']'; color: #888; }
+#footnoteArea .en-title { font-size: 0.8em; font-weight: 600; margin: 4px 0; }
+#footnoteArea .en-sep { margin-top: 16px; }

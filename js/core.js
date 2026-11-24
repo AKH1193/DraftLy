@@ -321,9 +321,13 @@ function paginate() {
 function layoutFootnotes(g, print, contentBottom) {
   const fa = $('#footnoteArea');
   const notes = $$('sup.fn', editor);
-  notes.forEach((n, i) => n.setAttribute('data-n', i + 1));
+  const rom = n => { const m = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]; let r = ''; for (const [v, t] of m) while (n >= v) { r += t; n -= v; } return r; };
+  let nf = 0, ne = 0;
+  notes.forEach(n => n.setAttribute('data-n', n.classList.contains('en') ? rom(++ne) : ++nf));
   if (!notes.length) { fa.innerHTML = ''; return 0; }
-  fa.innerHTML = '<div class="fn-sep"></div>' + notes.map((n, i) => `<p class="fn-item" data-i="${i}"><sup>${i + 1}</sup> ${esc(n.getAttribute('data-note') || '')}</p>`).join('');
+  const item = (n, i) => `<p class="fn-item" data-i="${i}"><sup>${n.getAttribute('data-n')}</sup> ${esc(n.getAttribute('data-note') || '')}</p>`;
+  const fns = notes.map((n, i) => [n, i]).filter(([n]) => !n.classList.contains('en')), ens = notes.map((n, i) => [n, i]).filter(([n]) => n.classList.contains('en'));
+  fa.innerHTML = (fns.length ? '<div class="fn-sep"></div>' + fns.map(([n, i]) => item(n, i)).join('') : '') + (ens.length ? '<div class="fn-sep en-sep"></div><p class="en-title">Endnotes</p>' + ens.map(([n, i]) => item(n, i)).join('') : '');
   if (print) {
     Object.assign(fa.style, { position: 'absolute', left: g.ml + 'px', width: g.cw + 'px', top: (contentBottom + 12) + 'px' });
     return fa.offsetHeight + 12;
@@ -374,6 +378,7 @@ function renderSheets(n, g, gap) {
   pages.style.height = totalH + 'px';
   applyZoom();
   if (typeof renderLineNumbers === 'function') renderLineNumbers();
+  if (typeof updateXrefs === 'function') updateXrefs();
 }
 function applyZoom() {
   const g = geom();

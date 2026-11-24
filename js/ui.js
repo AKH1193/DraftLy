@@ -576,18 +576,19 @@ function pageNumberMenu(anchor) {
   ]);
 }
 function editFootnote(sup) {
-  ask('Footnote ' + (sup.getAttribute('data-n') || ''), 'Footnote text', sup.getAttribute('data-note') || '', 'textarea').then(v => { if (v != null) mutate(() => sup.setAttribute('data-note', v)); });
+  const en = sup.classList.contains('en');
+  ask((en ? 'Endnote ' : 'Footnote ') + (sup.getAttribute('data-n') || ''), en ? 'Endnote text' : 'Footnote text', sup.getAttribute('data-note') || '', 'textarea').then(v => { if (v != null) mutate(() => sup.setAttribute('data-note', v)); });
 }
-async function insertFootnote() {
+async function insertFootnote(endnote) {
   restoreRange();
   const r = getRange(); if (!r) return;
   const saved = r.cloneRange();
-  const v = await ask('Insert Footnote', 'Footnote text', '', 'textarea');
+  const v = await ask(endnote ? 'Insert Endnote' : 'Insert Footnote', endnote ? 'Endnote text' : 'Footnote text', '', 'textarea');
   if (v == null) return;
   lastRange = saved; restoreRange();
   mutate(() => {
     const s = getSelection(); const rr = s.getRangeAt(0); rr.collapse(false);
-    const sup = h('sup', { class: 'fn', contenteditable: 'false', 'data-note': v });
+    const sup = h('sup', { class: endnote ? 'fn en' : 'fn', contenteditable: 'false', 'data-note': v });
     rr.insertNode(sup);
     if (Review.isTracking()) { const ins = h('ins', { class: 'tc', 'data-author': prefs.author, 'data-date': new Date().toISOString() }); sup.replaceWith(ins); ins.append(sup); }
     const nr = document.createRange(); nr.setStartAfter(sup.closest('ins.tc') || sup); nr.collapse(true); s.removeAllRanges(); s.addRange(nr);
@@ -823,6 +824,7 @@ const fmtDate = d => { try { const x = new Date(d); return isNaN(x) ? '' : x.toL
 function setMarkup(m) { ui.markup = m; ['all', 'simple', 'none', 'original'].forEach(x => document.body.classList.toggle('markup-' + x, x === m)); schedulePaginate(); updateRibbonState(); }
 function toggleTrack(on) {
   const v = on === undefined ? !Review.isTracking() : on;
+  if (!v && doc.settings.restrict && doc.settings.restrict.mode === 'trackedChanges') return toast('Track Changes is locked on. Use Review › Restrict Editing to stop protection.');
   Review.setTracking(v);
   doc.settings.trackChanges = v;
   $('#stTrack').classList.toggle('hidden', !v);

@@ -54,7 +54,7 @@ const DocxExport = (() => {
   function makeBuild(opts) {
     const b = {
       opts, media: [], revId: 100, picId: 1, comments: opts.comments || {}, cmtNum: new Map(), cmtStarted: new Set(), cmtLast: new Map(),
-      footnotes: [], abstracts: new Map(), nums: [], hasNumbering: false
+      footnotes: [], endnotes: [], bmId: 5000, abstracts: new Map(), nums: [], hasNumbering: false
     };
     b.newNum = (key, start, depth) => {
       if (!b.abstracts.has(key)) b.abstracts.set(key, b.abstracts.size + 1);
@@ -133,8 +133,9 @@ const DocxExport = (() => {
   }
   function wrap(f, x, part) {
     const b = part.build;
-    if (f.del) x = `<w:del w:id="${b.revId++}" w:author="${esc(f.del.a)}" w:date="${isoDate(f.del.d)}">${x}</w:del>`;
-    if (f.ins) x = `<w:ins w:id="${b.revId++}" w:author="${esc(f.ins.a)}" w:date="${isoDate(f.ins.d)}">${x}</w:ins>`;
+    const who = a => b.opts.anonymous ? 'Author' : a;
+    if (f.del) x = `<w:del w:id="${b.revId++}" w:author="${esc(who(f.del.a))}" w:date="${isoDate(f.del.d)}">${x}</w:del>`;
+    if (f.ins) x = `<w:ins w:id="${b.revId++}" w:author="${esc(who(f.ins.a))}" w:date="${isoDate(f.ins.d)}">${x}</w:ins>`;
     if (f.link) {
       if (f.link.startsWith('#')) x = `<w:hyperlink w:anchor="${esc(f.link.slice(1))}" w:history="1">${x}</w:hyperlink>`;
       else if (/^(https?:|mailto:|tel:|ftp:)/i.test(f.link)) x = `<w:hyperlink r:id="${part.rel('hyperlink', f.link, true)}" w:history="1">${x}</w:hyperlink>`;
@@ -193,6 +194,19 @@ const DocxExport = (() => {
     if (t === 'BR') return isTrailingBr(el) ? '' : wrap(f, `<w:r>${rPr(f)}<w:br/></w:r>`, part);
     if (t === 'IMG') return imageRun(el, f, part);
     if (t === 'SCRIPT' || t === 'STYLE') return '';
+    if (t === 'SUP' && el.classList.contains('fn') && el.classList.contains('en')) {
+      b.endnotes.push(el.getAttribute('data-note') || '');
+      return wrap(f, `<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteReference w:id="${b.endnotes.length}"/></w:r>`, part);
+    }
+    if (t === 'SPAN' && el.classList.contains('bm')) {
+      const id = b.bmId++, nm = (el.getAttribute('data-bm') || 'Bookmark').slice(0, 40);
+      return `<w:bookmarkStart w:id="${id}" w:name="${esc(nm)}"/>${runsOf(el.childNodes, fmtFrom(el, f), part)}<w:bookmarkEnd w:id="${id}"/>`;
+    }
+    if (t === 'SPAN' && el.classList.contains('xref')) {
+      const nm = el.getAttribute('data-ref') || '', k = el.getAttribute('data-kind');
+      const instr = k === 'page' ? `PAGEREF ${nm} \\h` : k === 'pos' ? `PAGEREF ${nm} \\p \\h` : `REF ${nm} \\h`;
+      return wrap(f, fieldRuns(instr, esc(el.textContent), f), part);
+    }
     if (t === 'SUP' && el.classList.contains('fn')) {
       b.footnotes.push(el.getAttribute('data-note') || '');
       const id = b.footnotes.length;
@@ -576,6 +590,8 @@ ${H(1, theme.h1 || 40)}${H(2, theme.h2 || 32)}${H(3, theme.h3 || 28)}${H(4, sz, 
 <w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:pPr><w:tabs><w:tab w:val="center" w:pos="4680"/><w:tab w:val="right" w:pos="9360"/></w:tabs><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr></w:style>
 <w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:basedOn w:val="DefaultParagraphFont"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="EndnoteText"><w:name w:val="endnote text"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
+<w:style w:type="character" w:styleId="EndnoteReference"><w:name w:val="endnote reference"/><w:basedOn w:val="DefaultParagraphFont"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>
 <w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:basedOn w:val="DefaultParagraphFont"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="CommentText"><w:name w:val="annotation text"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:pPr><w:spacing w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
 <w:style w:type="character" w:styleId="CommentReference"><w:name w:val="annotation reference"/><w:basedOn w:val="DefaultParagraphFont"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/><w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style>
@@ -667,10 +683,10 @@ ${H(1, theme.h1 || 40)}${H(2, theme.h2 || 32)}${H(3, theme.h3 || 28)}${H(4, sz, 
     if (b.hasNumbering) { doc.rel('numbering', 'numbering.xml'); files.push({ name: 'word/numbering.xml', data: numberingXml(b), ct: 'numbering' }); }
     if (b.cmtNum.size) {
       let cx = '';
-      const author = opts.author || 'Author';
+      const author = opts.anonymous ? 'Author' : opts.author || 'Author';
       for (const [cid, num] of b.cmtNum) {
         const c = b.comments[cid]; if (!c) continue;
-        const a = c.author || author;
+        const a = opts.anonymous ? 'Author' : c.author || author;
         const initials = a.split(/\s+/).map(w => w[0] || '').join('').slice(0, 3).toUpperCase();
         const paraOf = (text, first) => String(text || '').split('\n').map((ln, i) => `<w:p><w:pPr><w:pStyle w:val="CommentText"/></w:pPr>${first && i === 0 ? '<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:annotationRef/></w:r>' : ''}<w:r><w:t xml:space="preserve">${esc(ln)}</w:t></w:r></w:p>`).join('');
         let ps = paraOf(c.text, true);
@@ -687,10 +703,19 @@ ${H(1, theme.h1 || 40)}${H(2, theme.h2 || 32)}${H(3, theme.h3 || 28)}${H(4, sz, 
       doc.rel('footnotes', 'footnotes.xml');
       files.push({ name: 'word/footnotes.xml', data: XMLH + `<w:footnotes ${W_NS}>${fx}</w:footnotes>`, ct: 'footnotes' });
     }
-    const settingsXml = XMLH + `<w:settings ${W_NS}><w:zoom w:percent="100"/>${bg ? '<w:displayBackgroundShape/>' : ''}${opts.trackChanges ? '<w:trackRevisions/>' : ''}<w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/>${b.footnotes.length ? '<w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr>' : ''}<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
+    if (b.endnotes.length) {
+      const sepP = t => `<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:${t}/></w:r></w:p>`;
+      let ex = `<w:endnote w:type="separator" w:id="-1">${sepP('separator')}</w:endnote><w:endnote w:type="continuationSeparator" w:id="0">${sepP('continuationSeparator')}</w:endnote>`;
+      b.endnotes.forEach((t, i) => { ex += `<w:endnote w:id="${i + 1}"><w:p><w:pPr><w:pStyle w:val="EndnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteRef/></w:r><w:r><w:t xml:space="preserve"> ${esc(t)}</w:t></w:r></w:p></w:endnote>`; });
+      doc.rel('endnotes', 'endnotes.xml');
+      files.push({ name: 'word/endnotes.xml', data: XMLH + `<w:endnotes ${W_NS}>${ex}</w:endnotes>`, ct: 'endnotes' });
+    }
+    const st = opts.settings || {};
+    const prot = st.restrict && st.restrict.mode ? `<w:documentProtection w:edit="${st.restrict.mode === 'trackedChanges' ? 'trackedChanges' : st.restrict.mode === 'comments' ? 'comments' : 'readOnly'}" w:enforcement="1"/>` : '';
+    const settingsXml = XMLH + `<w:settings ${W_NS}><w:zoom w:percent="100"/>${opts.anonymous ? '<w:removePersonalInformation/>' : ''}${bg ? '<w:displayBackgroundShape/>' : ''}${opts.trackChanges ? '<w:trackRevisions/>' : ''}${prot}<w:defaultTabStop w:val="720"/><w:characterSpacingControl w:val="doNotCompress"/>${b.footnotes.length ? '<w:footnotePr><w:footnote w:id="-1"/><w:footnote w:id="0"/></w:footnotePr>' : ''}${b.endnotes.length ? '<w:endnotePr><w:endnote w:id="-1"/><w:endnote w:id="0"/></w:endnotePr>' : ''}<w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
 
     const now = isoDate();
-    const core = XMLH + `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${esc(opts.title || '')}</dc:title><dc:creator>${esc(opts.author || '')}</dc:creator><cp:lastModifiedBy>${esc(opts.author || '')}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${isoDate(opts.created)}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
+    const core = XMLH + `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${esc(opts.title || '')}</dc:title><dc:creator>${esc(opts.anonymous ? '' : opts.author || '')}</dc:creator><cp:lastModifiedBy>${esc(opts.anonymous ? '' : opts.author || '')}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${isoDate(opts.created)}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
     const app = XMLH + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>DraftLy</Application><DocSecurity>0</DocSecurity></Properties>';
 
     const CT = {
@@ -698,7 +723,8 @@ ${H(1, theme.h1 || 40)}${H(2, theme.h2 || 32)}${H(3, theme.h3 || 28)}${H(4, sz, 
       footer: 'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml',
       numbering: 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml',
       comments: 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml',
-      footnotes: 'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml'
+      footnotes: 'application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml',
+      endnotes: 'application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml'
     };
     const overrides = files.filter(f => f.ct).map(f => `<Override PartName="/${f.name}" ContentType="${CT[f.ct]}"/>`).join('');
     const types = XMLH + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Default Extension="bmp" ContentType="image/bmp"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>${overrides}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
