@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>DraftLy</title>
+<meta name="theme-color" content="#1F5F8B">
+<meta name="description" content="DraftLy: a full word processor that opens and saves .docx files.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DraftLy">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="css/app.css">
+<style id="docStyles"></style>
+<style id="printStyles"></style>
+</head>
+<body>
+<div id="app">
+  <header id="titlebar">
+    <div class="tb-left">
+      <span class="logo" aria-hidden="true">D</span>
+      <button class="qa" data-cmd="save" title="Save (Ctrl/Cmd+S)"></button>
+      <button class="qa" data-cmd="undo" title="Undo (Ctrl/Cmd+Z)"></button>
+      <button class="qa" data-cmd="redo" title="Redo (Ctrl/Cmd+Y)"></button>
+      <button class="qa" data-cmd="print" title="Print (Ctrl/Cmd+P)"></button>
+      <button class="qa" data-cmd="savePdf" title="Save as PDF"></button>
+    </div>
+    <div class="tb-title">
+      <input id="docTitle" value="Document1" spellcheck="false" aria-label="Document name">
+      <span id="saveState">Saved</span>
+    </div>
+    <div class="tb-right">
+      <button class="qa" data-cmd="findPane" title="Search (Ctrl/Cmd+F)"></button>
+      <button class="qa" data-cmd="share" title="Share"></button>
+      <button class="qa" data-cmd="toggleDark" title="Dark mode"></button>
+    </div>
+  </header>
+  <nav id="tabs" role="tablist"></nav>
+  <div id="ribbon" role="toolbar"></div>
+  <main id="main">
+    <aside id="navPane" class="pane left hidden">
+      <div class="pane-head"><span>Navigation</span><button class="x" data-close="navPane">×</button></div>
+      <div class="pane-body" id="navList"></div>
+    </aside>
+    <aside id="findPane" class="pane left hidden">
+      <div class="pane-head"><span>Find and Replace</span><button class="x" data-close="findPane">×</button></div>
+      <div class="pane-body find">
+        <input id="findInput" placeholder="Find in document" spellcheck="false">
+        <input id="replaceInput" placeholder="Replace with" spellcheck="false">
+        <label><input type="checkbox" id="findCase"> Match case</label>
+        <label><input type="checkbox" id="findWhole"> Whole words only</label>
+        <div class="row">
+          <button data-find="prev">Previous</button><button data-find="next">Next</button>
+        </div>
+        <div class="row">
+          <button data-find="replace">Replace</button><button data-find="all">Replace All</button>
+        </div>
+        <div id="findInfo"></div>
+      </div>
+    </aside>
+    <section id="canvas" tabindex="-1">
+      <div id="ruler" class="hidden"><div id="rulerInner"></div></div>
+      <div id="scaler">
+        <div id="pages">
+          <div id="sheets"></div>
+          <article id="editor" contenteditable="true" spellcheck="true" lang="en-IN"></article>
+          <div id="footnoteArea" contenteditable="false"></div>
+        </div>
+      </div>
+    </section>
+    <aside id="commentPane" class="pane right hidden">
+      <div class="pane-head"><span>Comments</span><button class="x" data-close="commentPane">×</button></div>
+      <div class="pane-body" id="commentList"></div>
+    </aside>
+    <aside id="changesPane" class="pane right hidden">
+      <div class="pane-head"><span>Revisions</span><button class="x" data-close="changesPane">×</button></div>
+      <div class="pane-body" id="changeList"></div>
+    </aside>
+  </main>
+  <footer id="statusbar">
+    <span id="stPage">Page 1 of 1</span>
+    <span id="stWords">0 words</span>
+    <span id="stLang" class="wide">English (India)</span>
+    <span id="stTrack" class="hidden">Track Changes: On</span>
+    <span class="grow"></span>
+    <span class="views">
+      <button data-cmd="readMode" title="Read Mode"></button>
+      <button data-cmd="printLayout" title="Print Layout"></button>
+      <button data-cmd="webLayout" title="Web Layout"></button>
+    </span>
+    <span class="zoom">
+      <button data-cmd="zoomOut" title="Zoom out">−</button>
+      <input type="range" id="zoomRange" min="25" max="300" value="100" aria-label="Zoom">
+      <button data-cmd="zoomIn" title="Zoom in">+</button>
+      <button id="zoomPct" data-cmd="zoomDialog">100%</button>
+    </span>
+  </footer>
+</div>
+
+<div id="backstage" class="hidden"></div>
+<div id="modalRoot"></div>
+<div id="menuRoot"></div>
+<div id="toast" class="hidden"></div>
+<div id="imgHandle" class="hidden"><span></span></div>
+<input type="file" id="fileOpen" accept=".docx,.html,.htm,.txt,.md,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+<input type="file" id="imgOpen" accept="image/*" hidden>
+
+<script src="js/icons.js"></script>
+<script src="js/zip.js"></script>
+<script src="js/docx-export.js"></script>
+<script src="js/docx-import.js"></script>
+<script src="js/review.js"></script>
+<script src="js/pdf.js"></script>
+<script src="js/core.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/ribbon.js"></script>
+<script src="js/file.js"></script>
+</body>
+</html>

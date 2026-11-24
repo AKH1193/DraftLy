@@ -1,0 +1,6 @@
+{
+  "appId": "com.akh.draftly",
+  "appName": "DraftLy",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}
