@@ -325,13 +325,44 @@ CMD.open = async () => {
   $('#fileOpen').click();
 };
 CMD.newDoc = () => newDoc();
-CMD.share = async () => {
+/* Share: ask Word or PDF, then hand the file to the device share sheet */
+async function shareBlob(blob, name, mime) {
+  if (IS_NATIVE) {
+    try { const data = await blobToBase64(blob); const res = await capCall('Filesystem', 'writeFile', { path: name, data, directory: 'CACHE' }); await capCall('Share', 'share', { title: name, url: res && res.uri, dialogTitle: 'Share ' + name }); }
+    catch (e) { if (!/cancel/i.test(e.message || '')) toast('Share failed: ' + (e.message || e)); }
+    return;
+  }
+  const file = new File([blob], name, { type: mime });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; }
+    catch (e) {
+      if (e.name === 'AbortError') return;
+      // the browser needs a fresh tap after a long preparation (common with PDFs)
+      modal('Ready to share', h('p', { class: 'note' }, name), [{ label: 'Close' }, { label: 'Share…', primary: true, fn: () => navigator.share({ files: [file], title: name }).catch(() => { }) }]);
+      return;
+    }
+  }
+  await saveBlob(blob, name);
+  toast(name + ' saved. Attach it to your email or message.', 5000);
+}
+async function shareAs(fmt) {
+  prefs.shareFmt = fmt; savePrefs();
   await persist(true);
-  const name = safeName(doc.title) + '.docx';
-  const blob = await buildDocx();
-  const file = new File([blob], name, { type: DOCX_MIME });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: doc.title }); } catch (e) { } }
-  else saveBlob(blob, name, doc.id + '.docx');
+  const base = safeName(doc.title);
+  try {
+    if (fmt === 'pdf') { closeBackstage(); const blob = await makePdf(); return shareBlob(blob, base + '.pdf', 'application/pdf'); }
+    return shareBlob(await buildDocx(), base + '.docx', DOCX_MIME);
+  } catch (e) { console.error(e); toast('Share failed: ' + e.message, 5000); }
+}
+function shareChoice(fmt, title, sub, ic) {
+  return h('button', { class: 'bs-act' + (prefs.shareFmt === fmt ? ' last' : ''), type: 'button', onclick: () => { $$('.modal-bg').forEach(m => m.remove()); shareAs(fmt); } }, h('span', { class: 'ic', html: icon(ic) }), h('b', null, title), h('small', null, sub));
+}
+CMD.share = () => {
+  modal('Share "' + doc.title + '"', h('div', null,
+    h('p', { class: 'note' }, 'How should the other person receive it?'),
+    h('div', { class: 'bs-actions share-pick' },
+      shareChoice('docx', 'Word document (.docx)', 'Opens and edits in MS Word, Google Docs, Pages', 'FileText'),
+      shareChoice('pdf', 'PDF', 'Fixed layout for reading, printing or filing', 'FileDown'))), [{ label: 'Cancel' }]);
 };
 let viewBeforePrint = null;
 function startPrintLayout() {
@@ -468,8 +499,8 @@ const BACKSTAGE = {
     m.append(h('div', { class: 'bs-actions' }, h('button', { class: 'bs-act', onclick: () => { closeBackstage(); setTimeout(CMD.print, 200); } }, h('span', { class: 'ic', html: icon('Printer') }), h('b', null, 'Print'), h('small', null, IS_MAC ? '⌘P' : 'Ctrl+P'))));
   },
   async share(m) {
-    m.append(h('h2', null, 'Share'), h('p', { class: 'note' }, 'Send a copy of this document as a Word file, for example by WhatsApp, Mail or AirDrop.'));
-    m.append(h('div', { class: 'bs-actions' }, h('button', { class: 'bs-act', onclick: () => CMD.share() }, h('span', { class: 'ic', html: icon('Share2') }), h('b', null, 'Share as .docx'), h('small', null, 'Uses your device share sheet'))));
+    m.append(h('h2', null, 'Share'), h('p', { class: 'note' }, 'Send a copy of this document by Mail, Gmail, WhatsApp or AirDrop. Choose Word if the other person needs to edit it, or PDF if they only need to read, print or file it.'));
+    m.append(h('div', { class: 'bs-actions' }, shareChoice('docx', 'Share as Word (.docx)', 'Editable in MS Word', 'FileText'), shareChoice('pdf', 'Share as PDF', 'Fixed layout, ready to print', 'FileDown')));
   },
   async sync(m) {
     m.append(h('h2', null, 'Sync & Devices'));
@@ -530,7 +561,10 @@ const BACKSTAGE = {
     const auto = h('input', { type: 'checkbox', style: { width: '20px' } }); auto.checked = prefs.autoDocx !== false;
     auto.addEventListener('change', () => { prefs.autoDocx = auto.checked; savePrefs(); });
     m.append(h('div', { class: 'form' }, h('label', null, 'Your name'), author, h('label', null, 'Style set for new documents'), set, h('label', null, 'Dark mode'), dark,
-      FS_OK ? h('label', null, 'Keep saved .docx files up to date automatically') : null, FS_OK ? auto : null));
+      FS_OK ? h('label', null, 'Keep saved .docx files up to date automatically') : null, FS_OK ? auto : null,
+      h('label', null, 'Sound when DraftLy opens'), (() => { const c = h('input', { type: 'checkbox', style: { width: '20px' } }); c.checked = prefs.launchSound !== false; c.addEventListener('change', () => { prefs.launchSound = c.checked; savePrefs(); }); return c; })()));
+    m.append(h('p', { class: 'note' }, 'DraftLy remembers your last custom page size, margins, columns, paragraph spacing, table size, watermark and colours on this device. ',
+      h('button', { class: 'btn', type: 'button', onclick: () => { prefs.last = {}; prefs.recentColors = []; delete prefs.defaultPage; delete prefs.pasteMode; savePrefs(); toast('Remembered settings cleared'); } }, 'Clear remembered settings')));
     await folderSection(m);
     m.append(h('h3', null, 'Theme'));
     const grid = h('div', { class: 'theme-grid' });
@@ -660,6 +694,7 @@ Sync.on(async (type, data) => {
   else await newDoc({ title: 'Document1' });
   closeBackstage();
   if (innerWidth < 760) { ui.fitWidth = true; setView('web'); }
+  else { if (prefs.zoom === 'width') ui.fitWidth = true; else if (typeof prefs.zoom === 'number') ui.zoom = prefs.zoom; ui.ruler = !!prefs.ruler; }
   renderTabs(); renderRibbon(); applyZoom();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => paginate());
   if (Sync.readSetupLink()) openBackstage('sync');

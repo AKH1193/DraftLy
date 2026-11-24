@@ -24,7 +24,7 @@ jobs:
       - name: Create Android project
         run: |
           npx cap add android
-          npx @capacitor/assets generate --android --iconBackgroundColor '#1F5F8B' --splashBackgroundColor '#1F5F8B' || echo "icon generation skipped"
+          npx @capacitor/assets generate --android --iconBackgroundColor '#1F5F8B' --splashBackgroundColor '#0d1117' --splashBackgroundColorDark '#0d1117' || echo "icon generation skipped"
           npx cap sync android
           python3 native/patch_android.py
       - name: Build APK

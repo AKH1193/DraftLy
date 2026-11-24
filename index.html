@@ -18,6 +18,52 @@
 <style id="printStyles"></style>
 </head>
 <body>
+<div id="splash" aria-hidden="true">
+  <style>
+    #splash{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:radial-gradient(120% 90% at 50% 38%,#1a2230 0%,#0d1117 55%,#07090c 100%);transition:opacity .38s ease,visibility .38s;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+    #splash.out{opacity:0;visibility:hidden}
+    #splash .sp-mark{width:96px;height:96px;animation:spIn .55s cubic-bezier(.2,.8,.2,1) both;filter:drop-shadow(0 10px 30px rgba(212,175,55,.18))}
+    #splash .sp-word{font-family:Georgia,"Times New Roman",serif;font-size:34px;letter-spacing:.06em;color:#f4efe2;animation:spUp .6s .12s cubic-bezier(.2,.8,.2,1) both}
+    #splash .sp-word b{font-weight:400;background:linear-gradient(180deg,#f7e7b4,#c9a24a);-webkit-background-clip:text;background-clip:text;color:transparent}
+    #splash .sp-line{width:120px;height:2px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;animation:spUp .6s .2s both}
+    #splash .sp-line i{display:block;height:100%;width:40%;background:linear-gradient(90deg,transparent,#d9b65c,transparent);animation:spRun 1s .25s ease-in-out infinite}
+    @keyframes spIn{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
+    @keyframes spUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @keyframes spRun{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
+    @media (prefers-reduced-motion:reduce){#splash *{animation:none!important}}
+  </style>
+  <svg class="sp-mark" viewBox="0 0 96 96">
+    <defs>
+      <linearGradient id="spGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f7e7b4"/><stop offset=".55" stop-color="#d4af37"/><stop offset="1" stop-color="#9c7a2b"/></linearGradient>
+      <linearGradient id="spTile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2533"/><stop offset="1" stop-color="#0f141b"/></linearGradient>
+    </defs>
+    <rect x="2" y="2" width="92" height="92" rx="22" fill="url(#spTile)" stroke="url(#spGold)" stroke-width="2"/>
+    <path d="M30 20h26l12 12v44H30z" fill="none" stroke="url(#spGold)" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M56 20v12h12" fill="none" stroke="url(#spGold)" stroke-width="2" stroke-linejoin="round"/>
+    <text x="48.5" y="60" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="27" font-weight="700" fill="url(#spGold)">D</text>
+    <path d="M38 67h20M38 71.5h14" stroke="url(#spGold)" stroke-width="1.6" stroke-linecap="round" opacity=".75"/>
+  </svg>
+  <div class="sp-word">Draft<b>Ly</b></div>
+  <div class="sp-line"><i></i></div>
+  <script>(function(){
+    var s=document.getElementById('splash'),t0=Date.now(),done=false,P={};
+    try{P=JSON.parse(localStorage.getItem('draftly.prefs')||'{}')}catch(e){}
+    /* launch sound: a few soft key clicks, then a mouse click (made on the fly, no audio files) */
+    if(P.launchSound!==false){try{
+      var AC=window.AudioContext||window.webkitAudioContext,ac=new AC(),out=ac.createGain();out.gain.value=0.55;out.connect(ac.destination);
+      var noise=ac.createBuffer(1,ac.sampleRate*0.06,ac.sampleRate),d=noise.getChannelData(0);for(var i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+      function burst(t,freq,q,peak,dec){var n=ac.createBufferSource();n.buffer=noise;var f=ac.createBiquadFilter();f.type='bandpass';f.frequency.value=freq;f.Q.value=q;var g=ac.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+dec);n.connect(f);f.connect(g);g.connect(out);n.start(t);n.stop(t+dec+0.02)}
+      function thock(t,hz,peak){var o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(hz,t);o.frequency.exponentialRampToValueAtTime(hz*0.6,t+0.04);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+0.003);g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);o.connect(g);g.connect(out);o.start(t);o.stop(t+0.07)}
+      function key(t,v){burst(t,2600+Math.random()*900,1.4,0.22*v,0.028);thock(t,170+Math.random()*40,0.16*v);burst(t+0.045+Math.random()*0.015,1800,2,0.05*v,0.018)}
+      function play(){var t=ac.currentTime+0.12,gaps=[0,0.085,0.075,0.11,0.07,0.095,0.08];for(var k=0;k<gaps.length;k++){t+=gaps[k];key(t,0.75+Math.random()*0.35)}
+        t+=0.2;burst(t,4200,3,0.32,0.012);thock(t,900,0.06);burst(t+0.07,3600,3,0.14,0.01)}
+      if(ac.state==='running')play();else ac.resume().then(function(){if(ac.state==='running'&&Date.now()-t0<400)play()}).catch(function(){});
+      setTimeout(function(){try{ac.close()}catch(e){}},2500);
+    }catch(e){}}
+    function hide(){if(done)return;done=true;s.classList.add('out');setTimeout(function(){s.remove()},420)}
+    window.addEventListener('load',function(){setTimeout(hide,Math.max(0,1150-(Date.now()-t0)))});setTimeout(hide,2600);
+  })();</script>
+</div>
 <div id="app">
   <header id="titlebar">
     <div class="tb-left">
@@ -118,6 +164,7 @@
 <script src="js/sync.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/table.js"></script>
+<script src="js/extras.js"></script>
 <script src="js/ribbon.js"></script>
 <script src="js/file.js"></script>
 </body>

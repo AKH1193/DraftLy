@@ -22,6 +22,8 @@ public class MainActivity extends BridgeActivity {{
     public void onCreate(Bundle savedInstanceState) {{
         registerPlugin(DraftlyPlugin.class);
         super.onCreate(savedInstanceState);
+        // let the launch sound play without a tap
+        try {{ getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false); }} catch (Exception e) {{ }}
     }}
 }}
 ''')

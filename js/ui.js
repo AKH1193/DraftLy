@@ -62,6 +62,7 @@ function afterChange(opts = {}) {
   clearTimeout(changeTimer);
   changeTimer = setTimeout(() => { refreshPanes(); updateWordCount(); }, 250);
   scheduleUI();
+  if (typeof extrasAfterChange === 'function') extrasAfterChange();
 }
 
 /* ---------- editor events ---------- */
@@ -76,6 +77,13 @@ document.addEventListener('selectionchange', () => {
   if (s.rangeCount && editor.contains(s.getRangeAt(0).commonAncestorContainer)) lastRange = s.getRangeAt(0).cloneRange();
   scheduleUI();
 });
+function insertPasted(mode, html, text) {
+  if (mode !== 'text' && html) return document.execCommand('insertHTML', false, mode === 'merge' && typeof mergeFormatting === 'function' ? mergeFormatting(html) : sanitizeHtml(html, true));
+  if (!text) return;
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  if (lines.length === 1) document.execCommand('insertText', false, text);
+  else document.execCommand('insertHTML', false, lines.map(l => `<p>${esc(l) || '<br>'}</p>`).join(''));
+}
 editor.addEventListener('paste', async e => {
   if (ui.readonly) { e.preventDefault(); return; }
   const cd = e.clipboardData;
@@ -85,14 +93,11 @@ editor.addEventListener('paste', async e => {
   if (Review.isTracking()) return; // tracked paste handled in beforeinput
   const html = cd.getData('text/html'), text = cd.getData('text/plain');
   e.preventDefault();
-  History.flush();
-  if (html && !e.shiftKey) document.execCommand('insertHTML', false, sanitizeHtml(html, true));
-  else if (text) {
-    const lines = text.replace(/\r\n?/g, '\n').split('\n');
-    if (lines.length === 1) document.execCommand('insertText', false, text);
-    else document.execCommand('insertHTML', false, lines.map(l => `<p>${esc(l) || '<br>'}</p>`).join(''));
-  }
+  History.record();
+  const mode = e.shiftKey || !html ? 'text' : prefs.pasteMode || 'keep';
+  insertPasted(mode, html, text);
   afterChange();
+  if (html && typeof showPasteOptions === 'function') showPasteOptions(html, text, mode);
 });
 editor.addEventListener('drop', e => {
   const f = [...(e.dataTransfer && e.dataTransfer.files) || []];
@@ -397,11 +402,13 @@ function paletteEl(colors, pick, extra) {
   wrap.append(g);
   return wrap;
 }
-function colorMenu(anchor, colors, pick, noneLabel) {
+function colorMenu(anchor, colors, pick0, noneLabel) {
+  const pick = c => { if (c && typeof addRecentColor === 'function') addRecentColor(c); pick0(c); };
   const items = [];
-  if (noneLabel) items.push({ label: noneLabel, icon: 'Ban', fn: () => pick(null) });
+  if (noneLabel) items.push({ label: noneLabel, icon: 'Ban', fn: () => pick0(null) });
   items.push({ el: paletteEl(colors, pick) });
-  items.push({ sep: true }, { label: 'More colours…', icon: 'Droplet', fn: () => { const i = h('input', { type: 'color', style: { position: 'fixed', left: '-100px' } }); document.body.append(i); i.addEventListener('input', () => pick(i.value)); i.addEventListener('change', () => i.remove()); i.click(); } });
+  if (prefs.recentColors && prefs.recentColors.length) items.push({ header: 'Recent Colours' }, { el: paletteEl(prefs.recentColors, pick) });
+  items.push({ sep: true }, { label: 'More colours…', icon: 'Droplet', fn: () => { const i = h('input', { type: 'color', style: { position: 'fixed', left: '-100px' } }); document.body.append(i); let v = null; i.addEventListener('input', () => { v = i.value; pick0(v); }); i.addEventListener('change', () => { if (v) addRecentColor(v); i.remove(); }); i.click(); } });
   showMenu(anchor, items);
 }
 function modal(title, body, buttons, opts = {}) {
@@ -432,6 +439,7 @@ const field = (label, input) => h('div', null, h('label', { class: 'fl' }, label
 /* ---------- insert features ---------- */
 function insertHTML(html) { exec('insertHTML', html); }
 function insertTable(rows, cols) {
+  if (typeof rememberLast === 'function') rememberLast('table', { rows, cols });
   const row = '<tr>' + '<td><p><br></p></td>'.repeat(cols) + '</tr>';
   insertHTML(`<table data-new="1"><tbody>${row.repeat(rows)}</tbody></table><p><br></p>`);
   const t = $('table[data-new]', editor);
@@ -453,7 +461,8 @@ function tablePicker(anchor) {
     g.append(i);
   }
   wrap.append(g, lab);
-  showMenu(anchor, [{ el: wrap }, { sep: true }, { label: 'Insert Table…', icon: 'Table', fn: async () => { const v = await ask('Insert Table', 'Columns × rows (for example 3x4)', '3x3'); const m = v && v.match(/(\d+)\s*[x×*,]\s*(\d+)/i); if (m) insertTable(Math.min(200, +m[2]), Math.min(40, +m[1])); } }]);
+  const lt = prefs.last && prefs.last.table;
+  showMenu(anchor, [{ el: wrap }, { sep: true }, ...(lt ? [{ label: `Last Custom Setting: ${lt.cols} × ${lt.rows} Table`, icon: 'History', fn: () => insertTable(lt.rows, lt.cols) }] : []), { label: 'Insert Table…', icon: 'Table', fn: async () => { const v = await ask('Insert Table', 'Columns × rows (for example 3x4)', lt ? `${lt.cols}x${lt.rows}` : '3x3'); const m = v && v.match(/(\d+)\s*[x×*,]\s*(\d+)/i); if (m) insertTable(Math.min(200, +m[2]), Math.min(40, +m[1])); } }]);
 }
 function insertImageFile(file) {
   const rd = new FileReader();
@@ -950,18 +959,21 @@ function paragraphDialog() {
   const aft = h('input', { type: 'number', step: '1', value: Math.round(parseFloat(cs.marginBottom) * 0.75) });
   const ls = h('select', null, ...[['1', 'Single'], ['1.15', '1.15'], ['1.5', '1.5 lines'], ['2', 'Double'], ['2.5', '2.5'], ['3', 'Triple']].map(([v, l]) => h('option', { value: v, selected: String(b.style.lineHeight) === v }, l)));
   modal('Paragraph', h('div', null, field('Alignment', al), h('div', { class: 'g2' }, field('Indent left (inches)', inL), field('Indent right (inches)', inR), field('Special', sp), field('By (inches)', by), field('Spacing before (pt)', bef), field('Spacing after (pt)', aft)), field('Line spacing', ls)), [{ label: 'Cancel' }, {
-    label: 'OK', primary: true, fn: () => { lastRange = saved; blockStyle(el => {
-      el.style.textAlign = al.value;
-      const l = parseFloat(inL.value) || 0, r = parseFloat(inR.value) || 0, y = parseFloat(by.value) || 0;
-      el.style.marginLeft = l ? l * 96 + 'px' : ''; el.style.marginRight = r ? r * 96 + 'px' : '';
-      el.style.textIndent = sp.value === 'none' ? '' : (sp.value === 'hang' ? -y : y) * 96 + 'px';
-      if (sp.value === 'hang' && !l) el.style.marginLeft = y * 96 + 'px';
-      el.style.marginTop = bef.value + 'pt'; el.style.marginBottom = aft.value + 'pt';
-      el.style.lineHeight = ls.value;
-    }); }
+    label: 'OK', primary: true, fn: () => { lastRange = saved; const v = { align: al.value, left: parseFloat(inL.value) || 0, right: parseFloat(inR.value) || 0, special: sp.value, by: parseFloat(by.value) || 0, before: +bef.value || 0, after: +aft.value || 0, line: ls.value }; rememberLast('para', v); applyPara(v); }
   }]);
 }
-function marginsDialog() {
+function applyPara(v) {
+  blockStyle(el => {
+    el.style.textAlign = v.align;
+    el.style.marginLeft = v.left ? v.left * 96 + 'px' : ''; el.style.marginRight = v.right ? v.right * 96 + 'px' : '';
+    el.style.textIndent = v.special === 'none' ? '' : (v.special === 'hang' ? -v.by : v.by) * 96 + 'px';
+    if (v.special === 'hang' && !v.left) el.style.marginLeft = v.by * 96 + 'px';
+    el.style.marginTop = v.before + 'pt'; el.style.marginBottom = v.after + 'pt';
+    el.style.lineHeight = v.line;
+  });
+}
+function marginsDialog() { return marginsDialog2(); }
+function marginsDialogOld() {
   const m = doc.settings.margins;
   const ins = ['top', 'bottom', 'left', 'right'].map(k => [k, h('input', { type: 'number', step: '0.05', min: '0', value: m[k] })]);
   modal('Custom Margins (inches)', h('div', { class: 'g2' }, ...ins.map(([k, i]) => field(k[0].toUpperCase() + k.slice(1), i))), [{ label: 'Cancel' }, { label: 'OK', primary: true, fn: () => setPage({ margins: Object.fromEntries(ins.map(([k, i]) => [k, Math.max(0, Math.min(4, parseFloat(i.value) || 0))])) }) }]);
@@ -976,6 +988,7 @@ function setZoom(z) {
   ui.fitWidth = z === 'width';
   if (z === 'page') { const c = $('#canvas'); z = Math.min((c.clientHeight - 40) / geom().ph, (c.clientWidth - 40) / geom().pw); }
   if (typeof z === 'number') ui.zoom = Math.max(0.25, Math.min(3, z));
+  prefs.zoom = ui.fitWidth ? 'width' : ui.zoom; savePrefs();
   applyZoom();
   if (selImg) placeHandle();
 }

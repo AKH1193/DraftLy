@@ -9,6 +9,8 @@ const DocxExport = (() => {
 
   const PAGE_SIZES = { A4: [11906, 16838], Letter: [12240, 15840], Legal: [12240, 20160], A5: [8391, 11906], Executive: [10440, 15120] };
 
+  const pageTw = s => s.pageSize === 'Custom' && s.pageW && s.pageH ? [Math.round(s.pageW * 1440), Math.round(s.pageH * 1440)] : (PAGE_SIZES[s.pageSize] || PAGE_SIZES.A4).slice();
+  const BVAL = { solid: 'single', single: 'single', double: 'double', dotted: 'dotted', dashed: 'dashed', thick: 'thick', groove: 'threeDEngrave', ridge: 'threeDEmboss' };
   let _ctx2d = null;
   function hex(c) {
     if (!c || c === 'transparent' || c === 'inherit' || c === 'initial') return null;
@@ -250,9 +252,19 @@ const DocxExport = (() => {
     if (style) s += `<w:pStyle w:val="${style}"/>`;
     if (o.keepNext) s += '<w:keepNext/>';
     if (o.num) s += `<w:numPr><w:ilvl w:val="${o.num.ilvl}"/><w:numId w:val="${o.num.id}"/></w:numPr>`;
-    if (o.bdr) s += o.bdr;
-    if (o.tabs) s += o.tabs;
     const st = el && el.getAttribute && el.getAttribute('style') ? el.style : null;
+    if (o.bdr) s += o.bdr;
+    else if (st) {
+      let pb = '';
+      for (const side of ['top', 'left', 'bottom', 'right']) {
+        const C = side[0].toUpperCase() + side.slice(1), sty = st['border' + C + 'Style'];
+        if (!sty || sty === 'none' || sty === 'hidden') continue;
+        const pt = (toPx(st['border' + C + 'Width']) || 1) * 0.75;
+        pb += `<w:${side} w:val="${BVAL[sty] || 'single'}" w:sz="${Math.max(2, Math.min(96, Math.round(pt * 8)))}" w:space="${side === 'top' || side === 'bottom' ? 1 : 4}" w:color="${hex(st['border' + C + 'Color']) || 'auto'}"/>`;
+      }
+      if (pb) s += `<w:pBdr>${pb}</w:pBdr>`;
+    }
+    if (o.tabs) s += o.tabs;
     let sp = '';
     if (st) {
       const mt = toPx(st.marginTop), mb = toPx(st.marginBottom);
@@ -314,6 +326,8 @@ const DocxExport = (() => {
     if (t === 'TABLE') return table(el, part, inh);
     if (t === 'DIV' && el.classList.contains('toc')) return toc(el, part);
     if (t === 'DIV' && el.classList.contains('cols') && part.isBody) return columns(el, part, inh);
+    if (t === 'DIV' && el.classList.contains('textbox')) return textbox(el, part, inh);
+    if (t === 'P') { const dc = el.querySelector('span.dropcap'); if (dc && dc.textContent) return dropCapPara(el, dc, part, inh); }
     if (t === 'BLOCKQUOTE' && [...el.childNodes].some(isBlock)) return blocks(el, part, Object.assign({}, inh, { indLeft: (inh.indLeft || 0) + 720 }));
     if (t === 'DL' || t === 'DD') return blocks(el, part, Object.assign({}, inh, t === 'DD' ? { indLeft: (inh.indLeft || 0) + 720 } : {}));
     if ([...el.childNodes].some(isBlock)) {
@@ -321,6 +335,39 @@ const DocxExport = (() => {
       return blocks(el, part, a ? Object.assign({}, inh, { align: a }) : inh);
     }
     return para(el, el.childNodes, part, inh);
+  }
+
+  function textbox(el, part, inh) {
+    const side = el.classList.contains('tb-right') ? 'right' : el.classList.contains('tb-left') ? 'left' : null;
+    const quote = el.classList.contains('tb-quote');
+    const w = Math.round(part.build.contentTw * (side ? 0.4 : quote ? 0.8 : 1));
+    const th = (part.build.opts.theme || {}).headingColor;
+    const qc = hex(th) || 'auto';
+    const B = (k, on, sz = 6, c = 'auto') => on ? `<w:${k} w:val="single" w:sz="${sz}" w:space="0" w:color="${c}"/>` : `<w:${k} w:val="nil"/>`;
+    let x = '<w:tbl><w:tblPr>';
+    if (side) x += `<w:tblpPr w:leftFromText="180" w:rightFromText="180" w:topFromText="60" w:bottomFromText="60" w:vertAnchor="text" w:horzAnchor="margin" w:tblpXSpec="${side}" w:tblpY="1"/>`;
+    x += `<w:tblW w:w="${w}" w:type="dxa"/>`;
+    if (quote) x += '<w:jc w:val="center"/>';
+    x += `<w:tblBorders>${quote ? B('top', 1, 12, qc) + B('left', 0) + B('bottom', 1, 12, qc) + B('right', 0) : B('top', 1) + B('left', 1) + B('bottom', 1) + B('right', 1)}${B('insideH', 0)}${B('insideV', 0)}</w:tblBorders>`;
+    x += '<w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="144" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="144" w:type="dxa"/></w:tblCellMar></w:tblPr>';
+    x += `<w:tblGrid><w:gridCol w:w="${w}"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr>`;
+    const cinh = Object.assign({}, inh, { indLeft: 0 });
+    if (quote) { cinh.align = 'center'; cinh.fmt = Object.assign({}, cinh.fmt || {}, { i: true }); }
+    let content = blocks(el, part, cinh);
+    if (!content.endsWith('</w:p>') && !content.endsWith('<w:p/>')) content += '<w:p/>';
+    return x + content + '</w:tc></w:tr></w:tbl><w:p><w:pPr><w:spacing w:after="0" w:line="120" w:lineRule="exact"/></w:pPr></w:p>';
+  }
+  function dropCapPara(el, dc, part, inh) {
+    const th = part.build.opts.theme || {};
+    const base = th.size || 11, lh = th.lineHeight || 1.15;
+    const pt = Math.round(base * lh * 3 * 1.3);
+    const line = Math.round(pt * 20 * 1.2);
+    const letter = dc.textContent;
+    const fmt = fmtFrom(dc, {});
+    const fx = `<w:p><w:pPr><w:keepNext/><w:framePr w:dropCap="${dc.classList.contains('dc-margin') ? 'margin' : 'drop'}" w:lines="3" w:wrap="around" w:vAnchor="text" w:hAnchor="text"/><w:spacing w:before="0" w:after="0" w:line="${line}" w:lineRule="exact"/><w:textAlignment w:val="baseline"/></w:pPr>${textRuns(letter, Object.assign({}, fmt, { size: pt }), part)}</w:p>`;
+    const par = dc.parentNode, nx = dc.nextSibling;
+    dc.remove();
+    try { return fx + block(el, part, inh); } finally { par.insertBefore(dc, nx); }
   }
 
   /* ---------- lists ---------- */
@@ -475,12 +522,17 @@ const DocxExport = (() => {
     if (b.ftr) x += `<w:footerReference w:type="default" r:id="${b.ftr}"/>`;
     if (b.ftrFirst) x += `<w:footerReference w:type="first" r:id="${b.ftrFirst}"/>`;
     if (o.continuous) x += '<w:type w:val="continuous"/>';
-    let [pw, ph] = PAGE_SIZES[s.pageSize] || PAGE_SIZES.A4;
+    let [pw, ph] = pageTw(s);
     const land = s.orientation === 'landscape';
     if (land) [pw, ph] = [ph, pw];
     const m = s.margins || { top: 1, bottom: 1, left: 1, right: 1 };
     x += `<w:pgSz w:w="${pw}" w:h="${ph}"${land ? ' w:orient="landscape"' : ''}/>`;
     x += `<w:pgMar w:top="${Math.round(m.top * 1440)}" w:right="${Math.round(m.right * 1440)}" w:bottom="${Math.round(m.bottom * 1440)}" w:left="${Math.round(m.left * 1440)}" w:header="708" w:footer="708" w:gutter="0"/>`;
+    if (s.pageBorder) {
+      const pb = s.pageBorder, val = BVAL[pb.style] || 'single', sz = Math.max(2, Math.min(96, Math.round((pb.width || 1) * 8))), col = hex(pb.color) || 'auto';
+      x += `<w:pgBorders w:offsetFrom="page">${['top', 'left', 'bottom', 'right'].map(k => `<w:${k} w:val="${val}" w:sz="${sz}" w:space="24" w:color="${col}"/>`).join('')}</w:pgBorders>`;
+    }
+    if (s.lineNumbers) x += `<w:lnNumType w:countBy="1" w:distance="360" w:restart="${s.lineNumbers.restart === 'page' ? 'newPage' : 'continuous'}"/>`;
     x += `<w:cols w:space="720"${o.cols > 1 ? ` w:num="${o.cols}"` : ''}/>`;
     if (s.differentFirst) x += '<w:titlePg/>';
     x += '<w:docGrid w:linePitch="360"/></w:sectPr>';
@@ -557,8 +609,8 @@ ${H(1, theme.h1 || 40)}${H(2, theme.h2 || 32)}${H(3, theme.h3 || 28)}${H(4, sz, 
   async function build(opts) {
     const b = makeBuild(opts);
     const s = opts.settings || {};
-    let [pw] = PAGE_SIZES[s.pageSize] || PAGE_SIZES.A4;
-    if (s.orientation === 'landscape') pw = (PAGE_SIZES[s.pageSize] || PAGE_SIZES.A4)[1];
+    let [pw] = pageTw(s);
+    if (s.orientation === 'landscape') pw = pageTw(s)[1];
     const m = s.margins || { left: 1, right: 1 };
     b.contentTw = Math.round(pw - (m.left + m.right) * 1440);
     b.sectionsSoFar = 0;

@@ -355,7 +355,12 @@ const DocxImport = (() => {
           case 'outlineLvl': p.outline = +attr(c, 'val'); break;
           case 'pageBreakBefore': p.pbb = on(c); break;
           case 'shd': { const f = attr(c, 'fill'); if (f && f !== 'auto') p.shade = '#' + f; break; }
-          case 'pBdr': p.border = !!child(c, 'bottom') && attr(child(c, 'bottom'), 'val') !== 'none'; break;
+          case 'pBdr': {
+            p.border = !!child(c, 'bottom') && attr(child(c, 'bottom'), 'val') !== 'none';
+            p.bdr = {};
+            for (const k of ['top', 'left', 'bottom', 'right']) { const e = child(c, k) || (k === 'left' ? child(c, 'start') : k === 'right' ? child(c, 'end') : null); const v = e && attr(e, 'val'); if (v && v !== 'none' && v !== 'nil') p.bdr[k] = { v, sz: +(attr(e, 'sz') || 4), color: attr(e, 'color') }; }
+            break;
+          }
           case 'keepNext': p.keepNext = on(c); break;
         }
       }
@@ -402,6 +407,11 @@ const DocxImport = (() => {
       if (P.shade && P.shade.toUpperCase() !== '#FFFFFF') css += `background-color:${P.shade};`;
       if (custom) css += runCss(base) + (base.b ? 'font-weight:bold;' : '') + (base.i ? 'font-style:italic;' : '');
       const textOnly = inner.replace(/<[^>]+>/g, '').trim();
+      if (P.bdr && !builtin && (textOnly || /<img/.test(inner))) {
+        const sides = Object.keys(P.bdr);
+        for (const k of sides) { const b = P.bdr[k]; const sty = b.v === 'double' ? 'double' : /dot/.test(b.v) ? 'dotted' : /dash/.test(b.v) ? 'dashed' : 'solid'; css += `border-${k}:${Math.max(0.25, (b.sz || 4) / 8) * (sty === 'double' ? 3 : 1)}pt ${sty} ${b.color && b.color !== 'auto' ? '#' + b.color : '#000000'};`; }
+        if (sides.length) css += sides.length === 4 ? 'padding:1pt 4pt;' : '';
+      }
       if (P.border && !textOnly && !/<img/.test(inner)) return { html: '<hr>', pbBefore: st.pbBefore, pbAfter: st.pbAfter };
       const attrs = (cls ? ` class="${cls}"` : '') + (css ? ` style="${esc(css)}"` : '');
       const body = inner || '<br>';
@@ -480,7 +490,19 @@ const DocxImport = (() => {
                 if (!(items.length && items[items.length - 1].toc)) items.push({ html: '<div class="toc" contenteditable="false" data-regen="1"></div>', toc: true });
                 break;
               }
+              const fp = child(child(n, 'pPr'), 'framePr');
+              const dcv = fp && attr(fp, 'dropCap');
+              if (dcv && dcv !== 'none') {
+                const t = (n.textContent || '').trim();
+                if (t) { st.pendingDrop = { t, margin: dcv === 'margin' }; break; }
+              }
               const r = convP(n, part, st);
+              if (st.pendingDrop && r.tag) {
+                const sp = `<span class="dropcap${st.pendingDrop.margin ? ' dc-margin' : ''}">${esc(st.pendingDrop.t)}</span>`;
+                r.inner = sp + (r.inner === '<br>' ? '' : r.inner);
+                r.html = `<${r.tag}${r.attrs}>${r.inner}</${r.tag}>`;
+              }
+              st.pendingDrop = null;
               if (r.pbBefore) items.push({ html: '<hr class="pb">' });
               items.push(r);
               if (r.pbAfter) items.push({ html: '<hr class="pb">' });
@@ -556,7 +578,16 @@ const DocxImport = (() => {
         let best = 'A4', bd = 1e9;
         for (const [k, [sw, sh]] of Object.entries(DocxExport.PAGE_SIZES)) { const d = Math.abs(sw - w) + Math.abs(sh - h); if (d < bd) { bd = d; best = k; } }
         settings.pageSize = best;
+        if (bd > 300) { settings.pageSize = 'Custom'; settings.pageW = Math.round(w / 1440 * 100) / 100; settings.pageH = Math.round(h / 1440 * 100) / 100; }
       }
+      const pgb = child(sect, 'pgBorders');
+      if (pgb) {
+        const e = child(pgb, 'top') || child(pgb, 'left');
+        const v = e && attr(e, 'val');
+        if (v && v !== 'none' && v !== 'nil') settings.pageBorder = { style: v === 'double' ? 'double' : v === 'thick' ? 'thick' : /dot/.test(v) ? 'dotted' : /dash/.test(v) ? 'dashed' : 'single', width: Math.max(0.5, (+(attr(e, 'sz') || 4)) / 8), color: attr(e, 'color') && attr(e, 'color') !== 'auto' ? '#' + attr(e, 'color') : '#000000' };
+      }
+      const lnt = child(sect, 'lnNumType');
+      if (lnt && attr(lnt, 'countBy')) settings.lineNumbers = { restart: attr(lnt, 'restart') === 'newPage' || attr(lnt, 'restart') === 'newSection' ? 'page' : 'continuous' };
       const mg = child(sect, 'pgMar');
       if (mg) settings.margins = { top: Math.abs(+attr(mg, 'top') || 1440) / 1440, bottom: Math.abs(+attr(mg, 'bottom') || 1440) / 1440, left: (+attr(mg, 'left') || 1440) / 1440, right: (+attr(mg, 'right') || 1440) / 1440 };
       const hfHtml = async (relId) => {

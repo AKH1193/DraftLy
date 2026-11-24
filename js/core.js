@@ -89,13 +89,13 @@ const FONT_STACKS = {
 const fontStack = f => FONT_STACKS[f] || `'${String(f).replace(/'/g, '')}', ${/mono|courier|menlo|consol/i.test(f) ? 'monospace' : /times|georgia|garamond|cambria|book|palatino|baskerville|didot|serif|antiqua|century/i.test(f) && !/sans/i.test(f) ? 'serif' : 'sans-serif'}`;
 
 /* ---------- document state ---------- */
-const DEFAULT_SETTINGS = () => ({ pageSize: 'A4', orientation: 'portrait', margins: { top: 1, bottom: 1, left: 1, right: 1 }, header: '', footer: '', firstHeader: '', firstFooter: '', differentFirst: false, watermark: '', pageColor: '', theme: Object.assign({}, STYLE_SETS[prefs.styleSet] || STYLE_SETS.Default) });
+const DEFAULT_SETTINGS = () => { const d = prefs.defaultPage || {}; return { pageSize: d.pageSize || 'A4', pageW: d.pageW, pageH: d.pageH, orientation: d.orientation || 'portrait', margins: Object.assign({ top: 1, bottom: 1, left: 1, right: 1 }, d.margins || {}), header: '', footer: '', firstHeader: '', firstFooter: '', differentFirst: false, watermark: '', pageColor: '', theme: Object.assign({}, STYLE_SETS[prefs.styleSet] || STYLE_SETS.Default) }; };
 let doc = null;          // { id, title, settings, comments, created, modified, syncedAt }
 const ui = { zoom: 1, view: 'print', markup: 'all', showComments: true, printing: false, pages: 1, readonly: false, ruler: false, fitWidth: false };
 
 function geom() {
   const s = doc.settings;
-  let [pw, ph] = PAGE_PX[s.pageSize] || PAGE_PX.A4;
+  let [pw, ph] = s.pageSize === 'Custom' && s.pageW && s.pageH ? [s.pageW * 96, s.pageH * 96] : PAGE_PX[s.pageSize] || PAGE_PX.A4;
   if (s.orientation === 'landscape') [pw, ph] = [ph, pw];
   const m = s.margins;
   return { pw, ph, mt: m.top * 96, mb: m.bottom * 96, ml: m.left * 96, mr: m.right * 96, cw: pw - (m.left + m.right) * 96, ch: ph - (m.top + m.bottom) * 96 };
@@ -125,6 +125,7 @@ function cleanHTML(root = editor) {
   c.querySelectorAll('[data-pg]').forEach(el => { el.removeAttribute('data-pg'); el.removeAttribute('data-pgb'); el.style.removeProperty('--pg'); if (!el.getAttribute('style')) el.removeAttribute('style'); });
   c.querySelectorAll('img.sel').forEach(el => { el.classList.remove('sel'); if (!el.className) el.removeAttribute('class'); });
   c.querySelectorAll('.cmt.active').forEach(el => el.classList.remove('active'));
+  c.querySelectorAll('[data-olv],[data-oli]').forEach(el => { el.removeAttribute('data-olv'); el.removeAttribute('data-oli'); el.classList.remove('olhide'); if (!el.className) el.removeAttribute('class'); });
   c.querySelectorAll('td.csel,th.csel').forEach(el => { el.classList.remove('csel'); if (!el.className) el.removeAttribute('class'); });
   return c.innerHTML.replace(/​/g, '');
 }
@@ -229,7 +230,7 @@ function applyDocStyles() {
   const F = fontStack(t.font), HF = fontStack(t.headingFont || t.font);
   const hb = t.headingBold ? 'bold' : 'normal';
   const hs = k => (t[k] ? t[k] / 2 : { h1: 20, h2: 16, h3: 14 }[k]) + 'pt';
-  $('#docStyles').textContent = `
+  const css = `
 #editor, #footnoteArea, .sheet .hf, .hf-editor { font-family: ${F}; font-size: ${t.size}pt; line-height: ${t.lineHeight}; }
 #editor p, #editor pre, #editor blockquote, #editor div:not(.toc):not(.cols) > p { margin: 0 0 ${t.after}pt; }
 ${t.justify ? '#editor p:not([class]), #editor li { text-align: justify; }' : ''}
@@ -247,6 +248,7 @@ ${t.justify ? '#editor p:not([class]), #editor li { text-align: justify; }' : ''
 #editor blockquote { margin-left: 0.5in; }
 #editor .toc .toc-title { font-family: ${HF}; }
 :root { --h-color: ${t.headingColor}; --doc-after: ${t.after}pt; }`;
+  $('#docStyles').textContent = css + css.replace(/#editor/g, '.splitdoc');
 }
 
 /* ---------- page layout & pagination ---------- */
@@ -355,6 +357,13 @@ function renderSheets(n, g, gap) {
     const wmText = s.watermark || '';
     if (wm._t !== wmText) { wm.innerHTML = wmText ? `<span>${esc(wmText)}</span>` : ''; wm._t = wmText; const sp = wm.firstChild; if (sp) sp.style.fontSize = Math.min(110, Math.round(g.pw * 1.15 / Math.max(4, wmText.length))) + 'px'; }
     sh.children[3].textContent = n > 1 ? String(i + 1) : '';
+    let fr = sh.querySelector('.pgframe');
+    const pb = s.pageBorder;
+    if (pb) {
+      if (!fr) { fr = h('div', { class: 'pgframe' }); sh.append(fr); }
+      const w = pb.style === 'thick' ? pb.width * 2 : pb.style === 'double' ? Math.max(3, pb.width * 3) : pb.width;
+      fr.style.border = `${w}pt ${pb.style === 'thick' ? 'solid' : pb.style === 'single' ? 'solid' : pb.style} ${pb.color || '#000'}`;
+    } else if (fr) fr.remove();
   }
   // editor box
   const totalH = n * stride - gap;
@@ -363,6 +372,7 @@ function renderSheets(n, g, gap) {
   pages.style.width = g.pw + 'px';
   pages.style.height = totalH + 'px';
   applyZoom();
+  if (typeof renderLineNumbers === 'function') renderLineNumbers();
 }
 function applyZoom() {
   const g = geom();

@@ -46,7 +46,7 @@ const PdfMaker = (() => {
       const cs = getComputedStyle(sp), r = rel(sp.getBoundingClientRect());
       ops.push({ t: 'wm', cx: r.x + r.w / 2, cy: r.y + r.h / 2, text: sp.textContent, font: fontOf(cs), color: cs.color });
     });
-    const roots = [...$$('#sheets .hf'), editor, $('#footnoteArea')];
+    const roots = [...$$('#sheets .pgframe'), ...$$('#sheets .lnwrap'), ...$$('#sheets .hf'), editor, $('#footnoteArea')];
     for (const root of roots) {
       const w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
       let n = root;
@@ -71,12 +71,15 @@ const PdfMaker = (() => {
             const bw = parseFloat(cs['border' + side + 'Width']), bs = cs['border' + side + 'Style'], bc = cs['border' + side + 'Color'];
             if (!bw || bs === 'none' || bs === 'hidden' || transparent(bc) || cs.display === 'inline') continue;
             const dash = bs === 'dotted' ? [bw, bw * 2] : bs === 'dashed' ? [bw * 3, bw * 2] : null;
-            const o = { t: 'line', w: bw, color: bc, dash };
-            if (side === 'Top') Object.assign(o, { x1: br.x, y1: br.y + bw / 2, x2: br.x + br.w, y2: br.y + bw / 2 });
-            if (side === 'Bottom') Object.assign(o, { x1: br.x, y1: br.y + br.h - bw / 2, x2: br.x + br.w, y2: br.y + br.h - bw / 2 });
-            if (side === 'Left') Object.assign(o, { x1: br.x + bw / 2, y1: br.y, x2: br.x + bw / 2, y2: br.y + br.h });
-            if (side === 'Right') Object.assign(o, { x1: br.x + br.w - bw / 2, y1: br.y, x2: br.x + br.w - bw / 2, y2: br.y + br.h });
-            ops.push(o);
+            const parts = bs === 'double' && bw >= 3 ? [[bw / 6, bw / 3], [bw * 5 / 6, bw / 3]] : [[bw / 2, bw]];
+            for (const [d, lw] of parts) {
+              const o = { t: 'line', w: lw, color: bc, dash };
+              if (side === 'Top') Object.assign(o, { x1: br.x, y1: br.y + d, x2: br.x + br.w, y2: br.y + d });
+              if (side === 'Bottom') Object.assign(o, { x1: br.x, y1: br.y + br.h - d, x2: br.x + br.w, y2: br.y + br.h - d });
+              if (side === 'Left') Object.assign(o, { x1: br.x + d, y1: br.y, x2: br.x + d, y2: br.y + br.h });
+              if (side === 'Right') Object.assign(o, { x1: br.x + br.w - d, y1: br.y, x2: br.x + br.w - d, y2: br.y + br.h });
+              ops.push(o);
+            }
           }
           if (el.tagName === 'IMG' && el.complete && el.naturalWidth) ops.push({ t: 'img', el, ...br });
           if (el.tagName === 'SUP' && el.classList.contains('fn')) {
