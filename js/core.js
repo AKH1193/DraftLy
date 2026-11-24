@@ -87,6 +87,7 @@ const Store = (() => {
 /* ---------- serialization ---------- */
 function cleanHTML(root = editor) {
   const c = root.cloneNode(true);
+  c.querySelectorAll('tr.pg-sp').forEach(r => r.remove());
   c.querySelectorAll('[data-pg]').forEach(el => { el.removeAttribute('data-pg'); el.removeAttribute('data-pgb'); el.style.removeProperty('--pg'); if (!el.getAttribute('style')) el.removeAttribute('style'); });
   c.querySelectorAll('img.sel').forEach(el => { el.classList.remove('sel'); if (!el.className) el.removeAttribute('class'); });
   c.querySelectorAll('.cmt.active').forEach(el => el.classList.remove('active'));
@@ -217,6 +218,7 @@ ${t.justify ? '#editor p:not([class]), #editor li { text-align: justify; }' : ''
 /* ---------- page layout & pagination ---------- */
 function topIn(el) { let y = 0; while (el && el !== editor) { y += el.offsetTop; el = el.offsetParent; } return y; }
 function clearPushes() {
+  editor.querySelectorAll('tr.pg-sp').forEach(r => r.remove());
   editor.querySelectorAll('[data-pg]').forEach(el => { el.removeAttribute('data-pg'); el.removeAttribute('data-pgb'); el.style.removeProperty('--pg'); if (!el.getAttribute('style')) el.removeAttribute('style'); });
 }
 function collectUnits() {
@@ -248,13 +250,26 @@ function paginate() {
     else if (top < cTop - 0.5) target = cTop;
     else if (top + hgt > cBot + 0.5 && hgt <= g.ch) target = (p + 1) * stride + g.mt;
     if (target !== null && target > top) {
-      el.setAttribute('data-pg', '');
-      el.style.setProperty('--pg', (target - top) + 'px');
+      if (u.tr) {
+        // move the whole row: insert an invisible spacer row so the table breaks cleanly between pages
+        const cols = [...el.cells].reduce((a, c) => a + (c.colSpan || 1), 0) || 1;
+        const sp = document.createElement('tr');
+        sp.className = 'pg-sp'; sp.setAttribute('contenteditable', 'false');
+        const td = document.createElement('td'); td.colSpan = cols;
+        td.style.cssText = `height:${target - top}px;padding:0;border-left-style:hidden;border-right-style:hidden;border-top-style:none;border-bottom-style:none;background:transparent`;
+        sp.appendChild(td); el.parentNode.insertBefore(sp, el);
+        const diff = target - topIn(el);
+        if (Math.abs(diff) > 0.5) td.style.height = Math.max(0, target - top + diff) + 'px';
+      } else {
+        el.setAttribute('data-pg', '');
+        el.style.setProperty('--pg', (target - top) + 'px');
+      }
     }
     bottom = Math.max(bottom, topIn(el) + el.offsetHeight);
   }
   if (ui.printing && !ui.raster) {
     // printing: turn each push into a real page break so printed pages match the screen exactly
+    editor.querySelectorAll('tr.pg-sp').forEach(sp => { sp.setAttribute('data-pgb', ''); sp.firstChild.style.height = g.mt + 'px'; });
     editor.querySelectorAll('[data-pg]').forEach(el => {
       el.setAttribute('data-pgb', '');
       const m = el.tagName === 'TR' ? 0 : parseFloat(getComputedStyle(el).marginTop) || 0;

@@ -123,6 +123,14 @@ const MENUS = {
   zoomMenu: a => showMenu(a, [{ label: '100%', fn: CMD.zoom100 }, { label: 'One Page', fn: CMD.zoomPage }, { label: 'Page Width', fn: CMD.zoomWidth }, { sep: true }, { label: 'Zoom…', fn: zoomDialog }]),
   tblDelete: a => showMenu(a, [{ label: 'Delete Rows', fn: () => tableOp('delRow') }, { label: 'Delete Columns', fn: () => tableOp('delCol') }, { label: 'Delete Table', fn: () => tableOp('delTable') }]),
   tblShade: a => colorMenu(a, THEME_COLORS, c => tableOp('shade', c), 'No Colour'),
+  tblBorders: a => showMenu(a, [{ label: 'All Borders', icon: 'Table', fn: () => setBorders('all') }, { label: 'Outside Borders', icon: 'Square', fn: () => setBorders('outside') }, { label: 'Inside Borders', icon: 'Grid3X3', fn: () => setBorders('inside') }, { label: 'No Border', icon: 'SquareDashed', fn: () => setBorders('none') }]),
+  penColor: a => colorMenu(a, THEME_COLORS, c => setPen('--bc', c), 'Automatic (black)'),
+  penWeight: a => showMenu(a, [['0.5pt', '½ pt'], ['0.75pt', '¾ pt'], ['1pt', '1 pt'], ['1.5pt', '1½ pt'], ['2.25pt', '2¼ pt'], ['3pt', '3 pt']].map(([v, l]) => ({ label: l, fn: () => setPen('--bw', v === '0.75pt' ? '' : v) }))),
+  tblSelect: a => showMenu(a, [{ label: 'Select Cell', fn: () => selectTablePart('cell') }, { label: 'Select Row', fn: () => selectTablePart('row') }, { label: 'Select Table', fn: () => selectTablePart('table') }]),
+  tblPosition: a => showMenu(a, [{ header: 'Table position' }, { label: 'Left', fn: () => tableAlign('left') }, { label: 'Centre', fn: () => tableAlign('center') }, { label: 'Right', fn: () => tableAlign('right') }, { header: 'Table width' }, ...[100, 90, 75, 60, 50].map(p => ({ label: p + '% of page width', fn: () => tableWidthPct(p) }))]),
+  tblAutofit: a => showMenu(a, [{ label: 'AutoFit Contents', fn: () => autofit('contents') }, { label: 'AutoFit Window', fn: () => autofit('window') }, { label: 'Fixed Column Width', fn: () => autofit('fixed') }]),
+  tblMargins: a => showMenu(a, [{ label: 'Narrow', fn: () => cellMargins('narrow') }, { label: 'Normal', fn: () => cellMargins('normal') }, { label: 'Wide', fn: () => cellMargins('wide') }]),
+  tblSort: a => showMenu(a, [{ label: 'Sort by this column, A to Z / 1 to 9', icon: 'ArrowDown', fn: () => sortTable(1) }, { label: 'Sort by this column, Z to A / 9 to 1', icon: 'ArrowUp', fn: () => sortTable(-1) }]),
   tblAlign: a => showMenu(a, [{ label: 'Top', fn: () => tableOp('valign', 'top') }, { label: 'Centre', fn: () => tableOp('valign', 'middle') }, { label: 'Bottom', fn: () => tableOp('valign', 'bottom') }]),
   imgSize: a => showMenu(a, [25, 50, 75, 100].map(p => ({ label: p + '% of text width', fn: () => imageOp('size', p / 100) })).concat([{ sep: true }, { label: 'Original size', fn: () => imageOp('reset') }])),
   imgWrap: a => showMenu(a, [{ label: 'In Line with Text', fn: () => imageOp('wrap', null) }, { label: 'Square, left', fn: () => imageOp('wrap', 'fl') }, { label: 'Square, right', fn: () => imageOp('wrap', 'fr') }, { label: 'Centred on its own line', fn: () => imageOp('wrap', 'ctr') }])
@@ -229,13 +237,21 @@ const TABS = [
     { label: 'Zoom', items: [big('ZoomIn', 'Zoom', 'zoomDialog'), col(sbtn('Search', '100%', 'zoom100'), sbtn('File', 'One Page', 'zoomPage'), sbtn('Scaling', 'Page Width', 'zoomWidth'))] },
     { label: 'Appearance', items: [big('Moon', 'Dark Mode', 'toggleDark', { state: () => prefs.dark }), big('Pilcrow', 'Formatting Marks', 'marks', { state: () => document.body.classList.contains('showmarks') })] }
   ] },
-  { id: 'table', label: 'Table', ctx: true, groups: [
-    { label: 'Rows & Columns', items: [col(sbtn('BetweenHorizontalStart', 'Insert Above', null, { fn: () => tableOp('rowAbove') }), sbtn('BetweenHorizontalEnd', 'Insert Below', null, { fn: () => tableOp('rowBelow') })), col(sbtn('BetweenVerticalStart', 'Insert Left', null, { fn: () => tableOp('colLeft') }), sbtn('BetweenVerticalEnd', 'Insert Right', null, { fn: () => tableOp('colRight') })), big('Trash2', 'Delete', null, { menu: 'tblDelete' })] },
-    { label: 'Merge', items: [big('TableCellsMerge', 'Merge Cells', null, { fn: () => tableOp('merge') }), col(sbtn('Columns2', 'Split Cell', null, { fn: () => tableOp('split') }), sbtn('Columns3', 'Distribute Columns', null, { fn: () => tableOp('distribute') }))] },
-    { label: 'Style', items: [big('PaintBucket', 'Shading', null, { menu: 'tblShade' }), big('Square', 'Borders', null, { fn: () => tableOp('borders') }), big('Heading1', 'Header Row', null, { fn: () => tableOp('header') })] },
-    { label: 'Alignment', items: [big('AlignCenter', 'Cell Alignment', null, { menu: 'tblAlign' })] }
+  { id: 'tdesign', label: 'Table Design', ctx: 'table', groups: [
+    { label: 'Table Style Options', items: [col(sbtn('Heading1', 'Header Row', null, { fn: () => toggleTableOpt('data-hr'), state: tableOptOn('data-hr') }), sbtn('Rows3', 'Banded Rows', null, { fn: () => toggleTableOpt('data-br'), state: tableOptOn('data-br') }), sbtn('Columns2', 'First Column', null, { fn: () => toggleTableOpt('data-fc'), state: tableOptOn('data-fc') }))] },
+    { label: 'Table Styles', items: [{ t: 'el', el: styleGallery }] },
+    { label: 'Shading', items: [big('PaintBucket', 'Shading', null, { menu: 'tblShade' })] },
+    { label: 'Borders', items: [big('Square', 'Borders', null, { menu: 'tblBorders' }), col(sbtn('Droplet', 'Pen Colour', null, { menu: 'penColor' }), sbtn('Minus', 'Pen Weight', null, { menu: 'penWeight' }))] }
   ] },
-  { id: 'picture', label: 'Picture', ctx: true, groups: [
+  { id: 'tlayout', label: 'Table Layout', ctx: 'table', groups: [
+    { label: 'Table', items: [col(sbtn('TextCursor', 'Select', null, { menu: 'tblSelect' }), sbtn('Table', 'View Gridlines', 'gridlines', { state: () => !document.body.classList.contains('nogrid') }), sbtn('AlignCenter', 'Position', null, { menu: 'tblPosition' }))] },
+    { label: 'Rows & Columns', items: [big('Trash2', 'Delete', null, { menu: 'tblDelete' }), col(sbtn('BetweenHorizontalStart', 'Insert Above', null, { fn: () => tableOp('rowAbove') }), sbtn('BetweenHorizontalEnd', 'Insert Below', null, { fn: () => tableOp('rowBelow') })), col(sbtn('BetweenVerticalStart', 'Insert Left', null, { fn: () => tableOp('colLeft') }), sbtn('BetweenVerticalEnd', 'Insert Right', null, { fn: () => tableOp('colRight') }))] },
+    { label: 'Merge', items: [col(sbtn('TableCellsMerge', 'Merge Cells', null, { fn: () => tableOp('merge') }), sbtn('Columns3', 'Split Cells', null, { fn: () => tableOp('split') }))] },
+    { label: 'Cell Size (inches)', items: [col({ t: 'el', el: () => numIn('Height', rowHeightGet, setRowHeight) }, { t: 'el', el: () => numIn('Width', colWidthGet, setColWidth) }), col(sbtn('Scaling', 'AutoFit', null, { menu: 'tblAutofit' }), sbtn('MoveVertical', 'Distribute Rows', null, { fn: distributeRows }), sbtn('Columns3', 'Distribute Columns', null, { fn: () => tableOp('distribute') }))] },
+    { label: 'Alignment', items: [{ t: 'el', el: alignGrid }, col(sbtn('Square', 'Cell Margins', null, { menu: 'tblMargins' }))] },
+    { label: 'Data', items: [col(sbtn('ArrowDown', 'Sort', null, { menu: 'tblSort' }), sbtn('History', 'Repeat Header Row', null, { fn: toggleRepeatHeader, state: () => { const t = curTable(); return !!(t && realRows(t)[0] && realRows(t)[0].hasAttribute('data-hdr')); } }), sbtn('Type', 'Convert to Text', null, { fn: convertTableToText }))] }
+  ] },
+  { id: 'picture', label: 'Picture', ctx: 'picture', groups: [
     { label: 'Size', items: [big('Scaling', 'Size', null, { menu: 'imgSize' })] },
     { label: 'Arrange', items: [big('AlignCenter', 'Wrap Text', null, { menu: 'imgWrap' })] },
     { label: 'Accessibility', items: [big('Info', 'Alt Text', null, { fn: () => selImg && altTextDialog(selImg) })] },
@@ -253,7 +269,7 @@ function renderTabs() {
   ctxTab = ctxNow;
   if (!ctxNow && TABS.find(t => t.id === currentTab && t.ctx)) currentTab = 'home';
   TABS.forEach(t => {
-    if (t.ctx && t.id !== ctxNow) return;
+    if (t.ctx && t.ctx !== ctxNow) return;
     const b = h('button', { class: (t.id === 'file' ? 'file ' : '') + (t.ctx ? 'ctx ' : '') + (t.id === currentTab ? 'on' : ''), role: 'tab', type: 'button' }, t.label);
     b.addEventListener('mousedown', e => e.preventDefault());
     b.addEventListener('click', () => { if (t.id === 'file') return openBackstage(); currentTab = t.id; renderTabs(); renderRibbon(); });

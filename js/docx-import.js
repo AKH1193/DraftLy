@@ -419,6 +419,8 @@ const DocxImport = (() => {
       const totalW = cols.reduce((a, b) => a + b, 0);
       const rows = [], origins = {};
       for (const tr of kids(tbl, 'tr')) {
+        const trHgt = desc(child(tr, 'trPr'), 'trHeight');
+        const rowH = trHgt && attr(trHgt, 'val') ? tw2px(attr(trHgt, 'val')) : 0;
         const row = { cells: [], header: !!desc(child(tr, 'trPr'), 'tblHeader') };
         let gc = 0;
         const cells = [];
@@ -434,7 +436,7 @@ const DocxImport = (() => {
             if (origins[gc]) origins[gc].rowspan++;
             gc += span; continue;
           }
-          const cell = { span, rowspan: 1, html: '', css: '' };
+          const cell = { span, rowspan: 1, html: '', css: rowH > 24 ? `height:${Math.round(rowH)}px;` : '' };
           const shd = child(tcPr, 'shd'), fill = shd && attr(shd, 'fill');
           if (fill && fill !== 'auto') cell.css += `background-color:#${fill};`;
           const va = attr(child(tcPr, 'vAlign'), 'val');
@@ -447,7 +449,16 @@ const DocxImport = (() => {
         }
         rows.push(row);
       }
-      let h = `<table${bordered ? '' : ' class="nb"'}>`;
+      let tstyle = '';
+      if (bd) {
+        const tb = [...bd.children].find(b => { const v = attr(b, 'val'); return v && v !== 'none' && v !== 'nil'; });
+        if (tb) {
+          const col = attr(tb, 'color'), sz = +attr(tb, 'sz');
+          if (col && col !== 'auto' && col.toUpperCase() !== '000000') tstyle += `--bc:#${col};`;
+          if (sz && sz !== 4) tstyle += `--bw:${sz / 8}pt;`;
+        }
+      }
+      let h = `<table${bordered ? '' : ' class="nb"'}${tstyle ? ` style="${tstyle}"` : ''}>`;
       if (totalW) h += '<colgroup>' + cols.map(w => `<col style="width:${Math.round(w / totalW * 1000) / 10}%">`).join('') + '</colgroup>';
       h += '<tbody>';
       for (const r of rows) {

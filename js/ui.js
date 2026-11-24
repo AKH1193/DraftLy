@@ -102,6 +102,12 @@ editor.addEventListener('drop', e => {
 editor.addEventListener('click', e => {
   const img = e.target.closest && e.target.closest('img');
   selectImage(img && editor.contains(img) ? img : null);
+  // like Word: clicking into a table shows Table Design; clicking out returns to Home
+  const inCell = e.target.closest && e.target.closest('td,th');
+  const tabNow = TABS.find(t => t.id === currentTab);
+  if (inCell && !img && (!tabNow || !tabNow.ctx)) { currentTab = 'tdesign'; ctxTab = 'table'; renderTabs(); renderRibbon(); }
+  else if (!inCell && !img && tabNow && tabNow.ctx) { currentTab = 'home'; renderTabs(); renderRibbon(); }
+  else if (img && currentTab !== 'picture') { currentTab = 'picture'; renderTabs(); renderRibbon(); }
   const fn = e.target.closest && e.target.closest('sup.fn');
   if (fn) editFootnote(fn);
   const a = e.target.closest && e.target.closest('a[href]');
@@ -169,7 +175,7 @@ function handleTab(shift) {
   const cell = closestOf(r.startContainer, 'td,th');
   const li = closestOf(r.startContainer, 'li');
   if (cell) {
-    const cells = [...cell.closest('table').querySelectorAll('td,th')];
+    const cells = [...cell.closest('table').querySelectorAll('td,th')].filter(c => !c.parentElement.classList.contains('pg-sp'));
     let i = cells.indexOf(cell) + (shift ? -1 : 1);
     if (i >= cells.length) { tableOp('rowBelow'); return handleTab(false); }
     const t = cells[Math.max(0, i)];
@@ -959,3 +965,87 @@ function setView(v) {
   editor.contentEditable = v === 'read' || ui.readonly ? 'false' : 'true';
   paginate(); applyZoom(); updateStatus(); updateRibbonState();
 }
+
+/* ---------- table column / row resizing (drag the cell borders, like Word) ---------- */
+(() => {
+  const EDGE = 6;
+  let drag = null;
+  const gridCount = t => Math.max(...[...t.rows].filter(r => !r.classList.contains('pg-sp')).map(r => [...r.cells].reduce((a, c) => a + (c.colSpan || 1), 0)), 1);
+  function ensureCols(table) {
+    const n = gridCount(table);
+    let cg = table.querySelector(':scope > colgroup');
+    const ref = [...table.rows].find(r => !r.classList.contains('pg-sp') && r.cells.length === n);
+    let widths;
+    if (cg && cg.children.length === n) widths = [...cg.children].map(c => c.getBoundingClientRect().width / (ui.view === 'print' ? ui.zoom : 1));
+    else if (ref) widths = [...ref.cells].map(c => c.offsetWidth);
+    else widths = new Array(n).fill(table.offsetWidth / n);
+    if (!cg || cg.children.length !== n) { if (cg) cg.remove(); cg = document.createElement('colgroup'); for (let i = 0; i < n; i++) cg.append(document.createElement('col')); table.insertBefore(cg, table.firstChild); }
+    [...cg.children].forEach((c, i) => c.style.width = widths[i] + 'px');
+    return { cols: [...cg.children], widths };
+  }
+  function hit(e) {
+    const td = e.target.closest && e.target.closest('td,th');
+    if (!td || !editor.contains(td) || td.parentElement.classList.contains('pg-sp') || ui.readonly) return null;
+    const r = td.getBoundingClientRect();
+    const tol = EDGE * (e.pointerType === 'touch' ? 2.5 : 1);
+    if (Math.abs(r.right - e.clientX) <= tol) return { td, kind: 'col' };
+    if (Math.abs(r.bottom - e.clientY) <= tol) return { td, kind: 'row' };
+    return null;
+  }
+  editor.addEventListener('pointermove', e => {
+    if (drag) return;
+    const hh = hit(e);
+    editor.style.cursor = hh ? (hh.kind === 'col' ? 'col-resize' : 'row-resize') : '';
+  });
+  editor.addEventListener('pointerdown', e => {
+    const hh = hit(e);
+    if (!hh || e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    History.flush();
+    const table = hh.td.closest('table'), z = ui.view === 'print' ? ui.zoom : 1;
+    if (hh.kind === 'col') {
+      const row = hh.td.parentElement;
+      let idx = -1; for (const c of row.cells) { idx += c.colSpan || 1; if (c === hh.td) break; }
+      const { cols, widths } = ensureCols(table);
+      drag = { kind: 'col', table, cols, widths, idx, x: e.clientX, z, tw: table.offsetWidth, last: idx === cols.length - 1 };
+    } else {
+      const tr = hh.td.parentElement;
+      drag = { kind: 'row', tr, y: e.clientY, z, h: tr.offsetHeight };
+    }
+    editor.setPointerCapture(e.pointerId);
+    document.body.style.cursor = editor.style.cursor;
+  }, true);
+  editor.addEventListener('pointermove', e => {
+    if (!drag) return;
+    e.preventDefault();
+    if (drag.kind === 'col') {
+      const d = (e.clientX - drag.x) / drag.z, i = drag.idx, w = drag.widths;
+      if (drag.last) {
+        const nw = Math.max(24, w[i] + d);
+        drag.cols[i].style.width = nw + 'px';
+        drag.table.style.width = Math.min(geom().cw * 1.25, drag.tw - w[i] + nw) + 'px';
+      } else {
+        const a = Math.max(24, Math.min(w[i] + w[i + 1] - 24, w[i] + d));
+        drag.cols[i].style.width = a + 'px';
+        drag.cols[i + 1].style.width = (w[i] + w[i + 1] - a) + 'px';
+      }
+    } else {
+      const nh = Math.max(16, drag.h + (e.clientY - drag.y) / drag.z);
+      [...drag.tr.cells].forEach(c => c.style.height = Math.round(nh) + 'px');
+    }
+  });
+  const end = () => {
+    if (!drag) return;
+    if (drag.kind === 'col') {
+      // store widths as percentages so the table keeps its shape on any page size
+      const ws = drag.cols.map(c => parseFloat(c.style.width) || 0), tot = ws.reduce((a, b) => a + b, 0) || 1;
+      drag.cols.forEach((c, k) => c.style.width = (ws[k] / tot * 100).toFixed(2) + '%');
+      if (!drag.last) drag.table.style.removeProperty('width');
+      if (!drag.table.getAttribute('style')) drag.table.removeAttribute('style');
+    }
+    drag = null; document.body.style.cursor = ''; editor.style.cursor = '';
+    afterChange();
+  };
+  editor.addEventListener('pointerup', end);
+  editor.addEventListener('pointercancel', end);
+})();

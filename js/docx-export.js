@@ -383,26 +383,36 @@ const DocxExport = (() => {
 
   /* ---------- tables ---------- */
   function table(el, part, inh) {
-    const rows = [...el.rows];
+    const rows = [...el.rows].filter(r => !r.classList.contains('pg-sp'));
     if (!rows.length) return '';
     let cols = 0;
     rows.forEach(r => { let c = 0; [...r.cells].forEach(td => c += td.colSpan || 1); cols = Math.max(cols, c); });
-    const total = part.build.contentTw;
+    const tw = toPx(el.style.width);
+    const total = tw ? Math.round(tw * 15) : part.build.contentTw;
     let grid = new Array(cols).fill(Math.round(total / cols));
     const ref = rows.find(r => r.cells.length === cols);
     if (ref) {
       const ws = [...ref.cells].map(c => c.offsetWidth || 0), sum = ws.reduce((a, b) => a + b, 0);
       if (sum > 0) grid = ws.map(w => Math.max(200, Math.round(total * w / sum)));
     }
-    const bordered = !el.classList.contains('nb');
-    const B = v => `<w:${v} w:val="single" w:sz="4" w:space="0" w:color="auto"/>`;
-    let x = `<w:tbl><w:tblPr><w:tblStyle w:val="${bordered ? 'TableGrid' : 'TableNormal'}"/><w:tblW w:w="${total}" w:type="dxa"/>`;
-    if (bordered) x += `<w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(B).join('')}</w:tblBorders>`;
+    const kind = el.classList.contains('nb') ? 'none' : el.classList.contains('ob') ? 'outside' : el.classList.contains('ib') ? 'inside' : 'all';
+    const bc = hex(el.style.getPropertyValue('--bc')) || 'auto';
+    const bwPt = parseFloat(el.style.getPropertyValue('--bw')) || 0.5;
+    const sz = Math.max(2, Math.min(96, Math.round(bwPt * 8)));
+    const B = (v, on) => on ? `<w:${v} w:val="single" w:sz="${sz}" w:space="0" w:color="${bc}"/>` : `<w:${v} w:val="nil"/>`;
+    const outer = kind === 'all' || kind === 'outside', inner = kind === 'all' || kind === 'inside';
+    let x = `<w:tbl><w:tblPr><w:tblStyle w:val="${kind === 'none' ? 'TableNormal' : 'TableGrid'}"/><w:tblW w:w="${total}" w:type="dxa"/>`;
+    if (el.style.marginLeft === 'auto' && el.style.marginRight === 'auto') x += '<w:jc w:val="center"/>';
+    else if (el.style.marginLeft === 'auto') x += '<w:jc w:val="right"/>';
+    x += `<w:tblBorders>${B('top', outer)}${B('left', outer)}${B('bottom', outer)}${B('right', outer)}${B('insideH', inner)}${B('insideV', inner)}</w:tblBorders>`;
     x += '<w:tblLayout w:type="fixed"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>';
     x += '<w:tblGrid>' + grid.map(w => `<w:gridCol w:w="${w}"/>`).join('') + '</w:tblGrid>';
     const pending = []; // per grid column: remaining rowspan rows
     rows.forEach((r, ri) => {
-      x += '<w:tr>' + (r.parentElement && r.parentElement.tagName === 'THEAD' ? '<w:trPr><w:tblHeader/></w:trPr>' : '');
+      const hts = [...r.cells].map(c => toPx(c.style.height)).filter(Boolean);
+      const trh = hts.length ? `<w:trHeight w:val="${Math.round(Math.max(...hts) * 15)}" w:hRule="atLeast"/>` : '';
+      const thd = (r.parentElement && r.parentElement.tagName === 'THEAD') || r.hasAttribute('data-hdr') ? '<w:tblHeader/>' : '';
+      x += '<w:tr>' + (trh || thd ? `<w:trPr>${trh}${thd}</w:trPr>` : '');
       let gc = 0;
       const cells = [...r.cells];
       let ci = 0;
@@ -428,7 +438,8 @@ const DocxExport = (() => {
         if (va === 'middle' || va === 'bottom') pr += `<w:vAlign w:val="${va === 'middle' ? 'center' : 'bottom'}"/>`;
         const cinh = Object.assign({}, inh, { indLeft: 0 });
         const a = jcOf(td.style.textAlign); if (a) cinh.align = a;
-        if (td.tagName === 'TH') cinh.fmt = Object.assign({}, cinh.fmt || {}, { b: true });
+        if (td.tagName === 'TH' || /bold|[6-9]00/.test(td.style.fontWeight)) cinh.fmt = Object.assign({}, cinh.fmt || {}, { b: true });
+        if (td.style.color) { const tc = hex(td.style.color); if (tc) cinh.fmt = Object.assign({}, cinh.fmt || {}, { color: tc }); }
         let content = blocks(td, part, cinh);
         if (!content.endsWith('</w:p>') && !content.endsWith('<w:p/>')) content += '<w:p/>';
         x += `<w:tc><w:tcPr>${pr}</w:tcPr>${content}</w:tc>`;
