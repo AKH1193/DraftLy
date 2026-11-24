@@ -484,3 +484,4 @@ body.glass .theme-card .tc-top { backdrop-filter: blur(6px); }
 .hf-pn button { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 4px; padding: 3px 9px; }
 .hf-pn button:hover, .hf-tools button:hover { background: var(--hover); }
 .hf-editor { background: #fff !important; color: #000; }
+html.copying, html.copying body, html.copying #app, html.copying #main, html.copying #canvas, html.copying #scaler, html.copying #pages { background: transparent !important; }

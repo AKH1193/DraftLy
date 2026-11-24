@@ -825,6 +825,20 @@ Sync.on(async (type, data) => {
   if (IS_NATIVE) { takeNativeFile(); window.addEventListener('draftlyopenfile', takeNativeFile); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') takeNativeFile(); }); }
   if ('launchQueue' in window) launchQueue.setConsumer(async p => { for (const hnd of p.files || []) openFileObject(await hnd.getFile(), hnd); });
   if (Sync.enabled) Sync.connect();
-  if ('serviceWorker' in navigator && !IS_NATIVE && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => { });
+  if ('serviceWorker' in navigator && !IS_NATIVE && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      // look for a new version whenever DraftLy comes back to the front, and every 30 minutes
+      const check = () => reg.update().catch(() => { });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+      setInterval(check, 30 * 60 * 1000);
+    }).catch(() => { });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || $('#updBar')) return;
+      document.body.append(h('div', { id: 'updBar', class: 'docx-bar' }, h('span', { class: 'msg' }, 'A new version of DraftLy is ready.'),
+        h('button', { class: 'btn primary', type: 'button', onclick: async () => { try { await persist(true); } catch (e) { } location.reload(); } }, 'Update now'),
+        h('button', { class: 'x', type: 'button', title: 'Later', onclick: () => $('#updBar').remove() }, '×')));
+    });
+  }
   window.DraftLy = { get doc() { return doc; }, editor, exportAs, buildDocx, openFileObject, newDoc, paginate, Review, History, Sync };
 })();

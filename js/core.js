@@ -342,8 +342,14 @@ function layoutFootnotes(g, print, contentBottom) {
   Object.assign(fa.style, { position: '', left: '', width: '', top: '' });
   return 0;
 }
+const _hfClean = new Map();
 function hfRender(html, page, total) {
-  return (html || '').replace(/\{PAGE\}/g, page).replace(/\{NUMPAGES\}/g, total);
+  html = html || '';
+  if (html && /background/i.test(html) && typeof stripBackgrounds === 'function') {
+    if (!_hfClean.has(html)) { if (_hfClean.size > 20) _hfClean.clear(); _hfClean.set(html, stripBackgrounds(html)); }
+    html = _hfClean.get(html);
+  }
+  return html.replace(/\{PAGE\}/g, page).replace(/\{NUMPAGES\}/g, total);
 }
 function renderSheets(n, g, gap) {
   ui.pages = n;

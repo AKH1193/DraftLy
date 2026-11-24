@@ -77,6 +77,12 @@ document.addEventListener('selectionchange', () => {
   if (s.rangeCount && editor.contains(s.getRangeAt(0).commonAncestorContainer)) lastRange = s.getRangeAt(0).cloneRange();
   scheduleUI();
 });
+/* Copying: Chrome copies the grey (or dark) area around the pages as a background colour, which pastes
+   as a grey or black box. Make the surroundings transparent for the moment of the copy. */
+['copy', 'cut'].forEach(t => editor.addEventListener(t, () => {
+  document.documentElement.classList.add('copying');
+  requestAnimationFrame(() => document.documentElement.classList.remove('copying'));
+}));
 function insertPasted(mode, html, text) {
   if (mode !== 'text' && html) return document.execCommand('insertHTML', false, mode === 'merge' && typeof mergeFormatting === 'function' ? mergeFormatting(html) : stripBackgrounds(sanitizeHtml(html, true)));
   if (!text) return;
@@ -543,7 +549,7 @@ function stripBackgrounds(html, all) {
 }
 function headerFooterDialog(focus) {
   const s = doc.settings;
-  const mkEd = html => h('div', { class: 'hf-editor', contenteditable: 'true', html: html || '' });
+  const mkEd = html => h('div', { class: 'hf-editor', contenteditable: 'true', html: stripBackgrounds(html || '', true) });
   const eds = { header: mkEd(s.header), footer: mkEd(s.footer), firstHeader: mkEd(s.firstHeader), firstFooter: mkEd(s.firstFooter) };
   let active = eds[focus] || eds.header;
   Object.values(eds).forEach(e => {
