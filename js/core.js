@@ -153,6 +153,8 @@ const Store = (() => {
 function cleanHTML(root = editor) {
   const c = root.cloneNode(true);
   c.querySelectorAll('tr.pg-sp').forEach(r => r.remove());
+  [...c.querySelectorAll('[data-cont]')].reverse().forEach(t => { const prev = t.previousElementSibling; if (prev && prev.tagName === t.tagName && c.querySelector(`[data-sid="${t.getAttribute('data-cont')}"]`)) { [...t.childNodes].forEach(k => prev.appendChild(k)); t.remove(); prev.normalize(); } else t.removeAttribute('data-cont'); });
+  c.querySelectorAll('[data-sid]').forEach(e => { e.removeAttribute('data-sid'); e.removeAttribute('data-split'); });
   c.querySelectorAll('[data-pg]').forEach(el => { el.removeAttribute('data-pg'); el.removeAttribute('data-pgb'); el.style.removeProperty('--pg'); if (!el.getAttribute('style')) el.removeAttribute('style'); });
   c.querySelectorAll('img.sel').forEach(el => { el.classList.remove('sel'); if (!el.className) el.removeAttribute('class'); });
   c.querySelectorAll('.cmt.active').forEach(el => el.classList.remove('active'));
@@ -284,6 +286,68 @@ ${t.justify ? '#editor p:not([class]), #editor li { text-align: justify; }' : ''
 }
 
 /* ---------- page layout & pagination ---------- */
+/* ---------- paragraphs that run across a page break (like Word: lines flow onto the next page) ---------- */
+let _splitId = 0;
+function selTextSave() {
+  const s = getSelection(); if (!s.rangeCount) return null;
+  const r = s.getRangeAt(0); if (!editor.contains(r.startContainer)) return null;
+  const off = (node, o) => { const pre = document.createRange(); pre.setStart(editor, 0); try { pre.setEnd(node, o); } catch (e) { return 0; } return pre.toString().length; };
+  return { s: off(r.startContainer, r.startOffset), e: off(r.endContainer, r.endOffset) };
+}
+function selTextRestore(x) {
+  if (!x) return;
+  const find = n => { const w = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT); let t, c = 0, last = null; while ((t = w.nextNode())) { if (c + t.length >= n) return [t, n - c]; c += t.length; last = t; } return last ? [last, last.length] : [editor, 0]; };
+  try { const [a, ao] = find(x.s), [b, bo] = find(x.e); const r = document.createRange(); r.setStart(a, ao); r.setEnd(b, bo); const s = getSelection(); s.removeAllRanges(); s.addRange(r); lastRange = r.cloneRange(); } catch (e) { }
+}
+function unsplitAll() {
+  const tails = editor.querySelectorAll('[data-cont]');
+  if (tails.length) {
+    [...tails].reverse().forEach(t => {
+      const head = editor.querySelector(`[data-sid="${t.getAttribute('data-cont')}"]`);
+      const prev = t.previousElementSibling;
+      // normally the tail goes back into its head; if Enter added a paragraph in between, it joins that one
+      const into = prev && prev.tagName === t.tagName && head ? prev : null;
+      if (into) {
+        if (into.lastChild && into.lastChild.nodeName === 'BR' && !into.lastChild.previousSibling) into.lastChild.remove();
+        const kids = [...t.childNodes]; if (kids.length === 1 && kids[0].nodeName === 'BR' && into.childNodes.length) kids.length = 0;
+        kids.forEach(k => into.appendChild(k)); t.remove(); into.normalize();
+      } else t.removeAttribute('data-cont');
+    });
+  }
+  editor.querySelectorAll('[data-sid]').forEach(e => { e.removeAttribute('data-sid'); e.removeAttribute('data-split'); });
+}
+function splitAtPage(el, cut) {
+  if (!/^(P|LI|BLOCKQUOTE)$/.test(el.tagName) || el.querySelector('ul,ol,table,img,div,hr,br + br')) return null;
+  const z = ui.printing ? 1 : (ui.view === 'print' ? ui.zoom : 1);
+  const er = editor.getBoundingClientRect(), yC = er.top + cut * z;
+  const texts = []; { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode())) if (t.length) texts.push(t); }
+  if (!texts.length) return null;
+  const rg = document.createRange(), lines = [];
+  for (const t of texts) { rg.selectNodeContents(t); for (const r of rg.getClientRects()) { if (!r.height || !r.width) continue; const L = lines.find(l => Math.abs(l.top - r.top) < 3 * z); if (L) L.bottom = Math.max(L.bottom, r.bottom); else lines.push({ top: r.top, bottom: r.bottom }); } }
+  lines.sort((a, b) => a.top - b.top);
+  let fit = lines.filter(l => l.bottom <= yC + 0.5).length;
+  // widow and orphan control, as in Word: never leave a single line alone at the bottom or top of a page
+  if (lines.length - fit < 2) fit = lines.length - 2;
+  if (fit < 2 || fit >= lines.length) return null;
+  const lineTop = lines[fit].top;
+  // first character that sits on the first line that does not fit
+  const idx = []; let total = 0; texts.forEach(t => { idx.push(total); total += t.length; });
+  const at = g => { let k = idx.length - 1; while (k > 0 && idx[k] > g) k--; return [texts[k], g - idx[k]]; };
+  const topOf = g => { for (let j = g; j < Math.min(total, g + 4); j++) { const [n, o] = at(j); rg.setStart(n, o); rg.setEnd(n, o + 1); const r = rg.getBoundingClientRect(); if (r.height) return r.top; } return -1e9; };
+  let lo = 0, hi = total - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (topOf(mid) >= lineTop - 2 * z) hi = mid; else lo = mid + 1; }
+  if (lo <= 0) return null;
+  const [node, off] = at(lo);
+  const range = document.createRange(); range.setStart(node, off); range.setEnd(el, el.childNodes.length);
+  const frag = range.extractContents();
+  const tail = el.cloneNode(false);
+  tail.removeAttribute('id'); tail.removeAttribute('data-pg'); tail.style.removeProperty('--pg'); if (!tail.getAttribute('style')) tail.removeAttribute('style');
+  const id = String(++_splitId);
+  el.setAttribute('data-sid', id); el.setAttribute('data-split', getComputedStyle(el).textAlign === 'justify' ? 'j' : '1');
+  tail.setAttribute('data-cont', id);
+  tail.appendChild(frag); el.after(tail);
+  return tail;
+}
 function topIn(el) { let y = 0; while (el && el !== editor) { y += el.offsetTop; el = el.offsetParent; } return y; }
 function clearPushes() {
   editor.querySelectorAll('tr.pg-sp').forEach(r => r.remove());
@@ -302,13 +366,17 @@ function paginate() {
   if (!doc) return;
   const g = geom();
   const print = ui.view === 'print' || ui.printing;
+  const selKeep = editor.querySelector('[data-cont]') ? selTextSave() : null;
   clearPushes();
-  if (!print) { renderSheets(1, g, 0); layoutFootnotes(g, false); return; }
+  unsplitAll();
+  if (!print) { renderSheets(1, g, 0); layoutFootnotes(g, false); if (selKeep) selTextRestore(selKeep); return; }
+  let splitSel = selKeep, didSplit = false;
   const gap = ui.printing ? 0 : GAP, stride = g.ph + gap;
   const MT = p => p === 0 ? g.mt1 : g.mt, MB = p => p === 0 ? g.mb1 : g.mb;
   let breakPage = null, bottom = g.mt1;
-  for (const u of collectUnits()) {
-    const el = u.el;
+  const units = collectUnits();
+  for (let ux = 0; ux < units.length; ux++) {
+    const u = units[ux], el = u.el;
     if (el.tagName === 'HR' && el.classList.contains('pb')) { breakPage = Math.floor(topIn(el) / stride); bottom = Math.max(bottom, topIn(el) + el.offsetHeight); continue; }
     const top = topIn(el), hgt = el.offsetHeight;
     const p = Math.max(0, Math.floor(top / stride));
@@ -317,7 +385,15 @@ function paginate() {
     if (breakPage !== null) { const tp = (breakPage + 1) * stride + MT(breakPage + 1); if (top < tp - 0.5) target = tp; breakPage = null; }
     else if (top >= cBot - 0.5) target = (p + 1) * stride + MT(p + 1);
     else if (top < cTop - 0.5) target = cTop;
-    else if (top + hgt > cBot + 0.5 && hgt <= g.ch) target = (p + 1) * stride + MT(p + 1);
+    else if (top + hgt > cBot + 0.5) {
+      // a long paragraph flows on to the next page instead of jumping there whole
+      if (!u.tr) {
+        if (!didSplit && !splitSel) splitSel = selTextSave();
+        const tail = splitAtPage(el, cBot);
+        if (tail) { didSplit = true; units.splice(ux + 1, 0, { el: tail }); bottom = Math.max(bottom, topIn(el) + el.offsetHeight); continue; }
+      }
+      if (hgt <= g.ch) target = (p + 1) * stride + MT(p + 1);
+    }
     if (target !== null && target > top) {
       if (u.tr) {
         // move the whole row: insert an invisible spacer row so the table breaks cleanly between pages
@@ -345,6 +421,7 @@ function paginate() {
       el.style.setProperty('--pg', Math.max(0, g.mt - m) + 'px');
     });
   }
+  if (splitSel && (didSplit || selKeep)) selTextRestore(splitSel);
   const fnH = layoutFootnotes(g, true, bottom);
   const last = bottom + fnH;
   const pages = Math.max(1, Math.floor(Math.max(0, last - 1) / stride) + 1);

@@ -564,3 +564,19 @@ table.chart-grid input.num { text-align: right; }
 .ver-acts .btn { padding: 4px 10px; font-size: 12px; }
 .ver-prev-wrap { max-height: 60vh; overflow: auto; background: #e9ebee; padding: 12px; border-radius: 6px; }
 @media (max-width: 600px) { .ver-row { flex-direction: column; align-items: stretch; } .ver-acts { justify-content: flex-start; } }
+/* a paragraph that continues on the next page */
+#editor [data-split] { margin-bottom: 0 !important; }
+#editor [data-split="j"] { text-align-last: justify; }
+#editor [data-cont] { margin-top: 0 !important; text-indent: 0 !important; }
+#editor li[data-cont] { display: block; }
+/* selected paragraph numbers */
+#numSelLayer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.num-hl { position: absolute; background: rgba(43,120,228,.16); border-radius: 3px; }
+.num-hl.main { background: rgba(43,120,228,.32); outline: 1px solid rgba(43,120,228,.6); }
+#editor.over-num { cursor: pointer; }
+.num-bar { position: fixed; z-index: 60; display: flex; align-items: center; gap: 2px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.num-bar button { border: 0; background: none; color: var(--text); height: 30px; min-width: 30px; border-radius: 6px; display: grid; place-items: center; cursor: pointer; padding: 0 6px; font-size: 12px; }
+.num-bar button svg { width: 17px; height: 17px; }
+.num-bar button:hover { background: var(--hover); }
+.num-bar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
+@media print { #numSelLayer, .num-bar { display: none !important; } }

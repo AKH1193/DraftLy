@@ -278,6 +278,7 @@ function toggleSplit() {
   });
 })();
 function extrasAfterChange() {
+  if (typeof NumSel !== 'undefined' && NumSel.active) setTimeout(() => NumSel.redraw(), 350);
   clearTimeout(splitTimer);
   splitTimer = setTimeout(renderSplit, 600);
   if (document.body.classList.contains('outline')) outlineMark();

@@ -175,6 +175,7 @@ async function buildDocx(opts = {}) {
   return new Blob([await OfficeCrypto.encrypt(new Uint8Array(await blob.arrayBuffer()), pw)], { type: DOCX_MIME });
 }
 async function buildDocxPlain() {
+  unsplitAll(); setTimeout(() => schedulePaginate(), 0);
   return DocxExport.build({ root: editor, settings: doc.settings, comments: doc.comments, theme: doc.settings.theme, title: doc.title, author: prefs.author, trackChanges: Review.isTracking(), created: doc.created, anonymous: !!doc.settings.anonymous });
 }
 function buildHtml() {
@@ -393,6 +394,7 @@ function queueDocxRefresh(id) {
 async function docxBlobFor(rec) {
   const open = doc && doc.id === rec.id;
   const s = open ? doc.settings : Object.assign(DEFAULT_SETTINGS(), rec.settings || {});
+  if (open) { unsplitAll(); setTimeout(() => schedulePaginate(), 0); }
   const root = open ? editor : h('div', { html: rec.html || '<p></p>' });
   let blob = await DocxExport.build({ root, settings: s, comments: (open ? doc.comments : rec.comments) || {}, theme: s.theme, title: rec.title, author: prefs.author, trackChanges: open ? Review.isTracking() : !!s.trackChanges, created: rec.created, anonymous: !!s.anonymous });
   if (s.encrypted) {

@@ -83,6 +83,23 @@ document.addEventListener('selectionchange', () => {
   document.documentElement.classList.add('copying');
   requestAnimationFrame(() => document.documentElement.classList.remove('copying'));
 }));
+/* Backspace / Delete where a paragraph continues on the next page: act on the neighbouring character, as in Word */
+editor.addEventListener('keydown', e => {
+  if ((e.key !== 'Backspace' && e.key !== 'Delete') || e.metaKey || e.ctrlKey || e.altKey) return;
+  const s = getSelection(); if (!s.rangeCount || !s.isCollapsed) return;
+  const r = s.getRangeAt(0);
+  const blk = (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement).closest('[data-cont],[data-sid]');
+  if (!blk) return;
+  const pre = document.createRange(); pre.selectNodeContents(blk); pre.setEnd(r.startContainer, r.startOffset);
+  const atStart = pre.toString().length === 0, atEnd = pre.toString().length === blk.textContent.length;
+  let other = null, toEnd = false;
+  if (e.key === 'Backspace' && atStart && blk.hasAttribute('data-cont')) { other = blk.previousElementSibling; toEnd = true; }
+  if (e.key === 'Delete' && atEnd && blk.hasAttribute('data-sid')) other = blk.nextElementSibling;
+  if (!other) return;
+  const w = document.createTreeWalker(other, NodeFilter.SHOW_TEXT); let t, last = null, first = null; while ((t = w.nextNode())) { if (!first && t.length) first = t; if (t.length) last = t; }
+  const n = toEnd ? last : first; if (!n) return;
+  const c = document.createRange(); c.setStart(n, toEnd ? n.length : 0); c.collapse(true); s.removeAllRanges(); s.addRange(c);
+}, true);
 function insertPasted(mode, html, text) {
   if (mode !== 'text' && html) return document.execCommand('insertHTML', false, mode === 'merge' && typeof mergeFormatting === 'function' ? mergeFormatting(html) : stripBackgrounds(sanitizeHtml(html, true)));
   if (!text) return;

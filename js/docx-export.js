@@ -305,6 +305,7 @@ const DocxExport = (() => {
       if (ti != null) { first = Math.round(ti * 15); hasInd = true; }
     }
     if (hasInd && !o.num) s += `<w:ind w:left="${left}" w:right="${right}"${first < 0 ? ` w:hanging="${-first}"` : first > 0 ? ` w:firstLine="${first}"` : ''}/>`;
+    else if (o.num && o.num.shift) s += `<w:ind w:left="${720 * (o.num.ilvl + 1) + o.num.shift}" w:hanging="360"/>`;
     else if (o.num && st && toPx(st.textIndent)) { /* keep list indents from numbering */ }
     const jc = jcOf(st && st.textAlign) || o.align || null;
     if (jc) s += `<w:jc w:val="${jc}"/>`;
@@ -403,12 +404,14 @@ const DocxExport = (() => {
   function list(el, depth, part, inh) {
     const b = part.build;
     const numId = b.newNum(listKey(el), parseInt(el.getAttribute('start')) || 1, Math.min(depth, 8));
+    // a list moved left or right with its numbers (margin on the list and the lists around it)
+    let shift = 0; for (let l = el; l && l.tagName !== 'ARTICLE' && l.nodeType === 1; l = l.parentElement) if (/^(OL|UL)$/.test(l.tagName) && l.style && l.style.marginLeft) shift += Math.round((toPx(l.style.marginLeft) || 0) * 15);
     let out = '';
     for (const li of el.children) {
       if (li.tagName === 'UL' || li.tagName === 'OL') { out += list(li, depth + 1, part, inh); continue; }
       let first = true, inline = [];
       const emit = (blockEl, nodes) => {
-        out += para(blockEl || li, nodes, part, inh, first ? { num: { id: numId, ilvl: Math.min(depth, 8) } } : { indLeft: 720 * (depth + 1) });
+        out += para(blockEl || li, nodes, part, inh, first ? { num: { id: numId, ilvl: Math.min(depth, 8), shift } } : { indLeft: 720 * (depth + 1) + shift });
         first = false;
       };
       const flush = () => { if (inline.length && inline.some(n => n.nodeType === 1 || n.nodeValue.trim())) emit(null, inline); else if (inline.length && first) emit(null, inline); inline = []; };

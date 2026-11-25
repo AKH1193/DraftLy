@@ -1,6 +1,6 @@
 /* DraftLy offline cache: the app works with no internet once opened. */
 const CACHE = 'draftly-v1';
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'css/app.css', 'js/icons.js', 'js/zip.js', 'js/docx-export.js', 'js/docx-import.js', 'js/review.js', 'js/pdf.js', 'js/core.js', 'js/sync.js', 'js/ui.js', 'js/table.js', 'js/extras.js', 'js/compare.js', 'js/protect.js', 'js/home.js', 'js/versions.js', 'js/importers.js', 'js/vendor/pdf.min.mjs', 'js/vendor/pdf.worker.min.mjs', 'js/ribbon.js', 'js/file.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
+const FILES = ['./', 'index.html', 'manifest.webmanifest', 'css/app.css', 'js/icons.js', 'js/zip.js', 'js/docx-export.js', 'js/docx-import.js', 'js/review.js', 'js/pdf.js', 'js/core.js', 'js/sync.js', 'js/ui.js', 'js/table.js', 'js/extras.js', 'js/compare.js', 'js/protect.js', 'js/home.js', 'js/versions.js', 'js/importers.js', 'js/listnum.js', 'js/vendor/pdf.min.mjs', 'js/vendor/pdf.worker.min.mjs', 'js/ribbon.js', 'js/file.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
