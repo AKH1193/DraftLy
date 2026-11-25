@@ -163,6 +163,8 @@ async function readDocSource(src) {
   if (src === 'current') { await persist(true); return { html: cleanHTML(), settings: JSON.parse(JSON.stringify(doc.settings)), comments: JSON.parse(JSON.stringify(doc.comments || {})), title: doc.title }; }
   if (src instanceof File) {
     if (/\.docx$/i.test(src.name)) return DocxImport.parse(await src.arrayBuffer(), src.name);
+    if (/\.doc$/i.test(src.name)) return DocImport.parse(await src.arrayBuffer(), src.name);
+    if (/\.pdf$/i.test(src.name)) return PdfImport.parse(await src.arrayBuffer(), src.name);
     const t = await src.text();
     return { html: /\.html?$/i.test(src.name) ? sanitizeHtml(t) : mdToHtml(t), settings: DEFAULT_SETTINGS(), comments: {}, title: src.name.replace(/\.\w+$/, '') };
   }
@@ -174,7 +176,7 @@ async function compareDialog() {
   const mkPick = (label, def) => {
     const sel = h('select', null, h('option', { value: 'current' }, 'This document: ' + doc.title), h('option', { value: 'file' }, 'Browse for a .docx file…'), ...all.filter(d => d.id !== doc.id).slice(0, 60).map(d => h('option', { value: d.id }, d.title)));
     sel.value = def;
-    const fi = h('input', { type: 'file', accept: '.docx,.html,.htm,.txt,.md', style: { display: 'none' } });
+    const fi = h('input', { type: 'file', accept: '.docx,.doc,.pdf,.html,.htm,.txt,.md', style: { display: 'none' } });
     const nm = h('small', { class: 'note' });
     sel.addEventListener('change', () => { if (sel.value === 'file') fi.click(); });
     fi.addEventListener('change', () => { nm.textContent = fi.files[0] ? fi.files[0].name : ''; });

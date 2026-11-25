@@ -27,6 +27,7 @@ async function persist(immediate) {
   clearTimeout(saveTimer);
   const rec = record();
   await Store.put(rec);
+  if (typeof Versions !== 'undefined') Versions.snap(rec, 'Auto').catch(() => { });
   setSaveState(Sync.enabled ? (Sync.status === 'live' ? 'Saved · syncing…' : 'Saved on this device') : 'Saved on this device');
   if (Sync.enabled) Sync.push(rec, immediate);
   scheduleFolderCopy();
@@ -50,6 +51,7 @@ async function loadDoc(d) {
   if ($('.toc[data-regen]', editor)) { $$('.toc[data-regen]', editor).forEach(t => t.removeAttribute('data-regen')); requestAnimationFrame(() => updateTOC()); }
   prefs.lastDoc = doc.id; savePrefs();
   History.reset();
+  if (typeof Versions !== 'undefined' && !d.stub) Versions.snap(Object.assign({}, d, { id: d.id }), 'Opened').catch(() => { });
   paginate(); renderRibbon(); refreshPanes(); updateWordCount();
   if (Object.keys(doc.comments).length && Review.commentIds().length && innerWidth > 900) showPane('commentPane', true);
   setSaveState(doc.syncedAt && doc.syncedAt >= doc.modified ? 'Saved · synced' : 'Saved on this device');
@@ -68,6 +70,7 @@ let docCounter = 1;
 const nextTitle = () => 'Document' + (docCounter++);
 async function deleteDoc(id) {
   await Store.del(id);
+  if (typeof Versions !== 'undefined') Versions.removeAll(id);
   if (Sync.enabled) Sync.remove(id);
   if (doc && doc.id === id) {
     const all = (await Store.all()).filter(d => !d.stub);
@@ -90,14 +93,32 @@ async function openRecord(id) {
 async function openFileObject(file, handle) {
   try {
     const name = file.name || 'Document';
-    const ext = (name.split('.').pop() || '').toLowerCase();
+    let ext = (name.split('.').pop() || '').toLowerCase();
+    // look at the file itself when the name does not say what it is (files shared from other apps)
+    try {
+      const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+      if (head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46) ext = 'pdf';
+      else if (head[0] === 0xD0 && head[1] === 0xCF && ext !== 'doc') { const f = CFB.read(await file.arrayBuffer()); if (f['WordDocument']) ext = 'doc'; }
+    } catch (e) { }
     toast('Opening ' + name + '…', 1500);
     let opts;
     if (ext === 'docx' || ext === 'docm' || ext === 'dotx') {
       const r = await DocxImport.parse(await file.arrayBuffer(), name);
       if (r === null) return; // password prompt cancelled
       opts = { title: r.title, html: r.html, settings: r.settings, comments: r.comments, password: r.password };
-    } else if (ext === 'doc') { return toast('Old .doc files are not supported. Open it in Word or Google Docs and save as .docx first.', 5000); }
+    } else if (ext === 'doc' || ext === 'dot') {
+      const r = DocImport.parse(await file.arrayBuffer(), name);
+      opts = { title: r.title, html: r.html, settings: r.settings, comments: {} };
+      toast('Opened the Word 97-2003 file. Saving will create a new .docx; the original .doc is left as it is.', 6000);
+    } else if (ext === 'pdf') {
+      const box = h('p', null, 'Reading the PDF…');
+      const pm = modal('Opening PDF', box, []);
+      let r;
+      try { r = await PdfImport.parse(await file.arrayBuffer(), name, (n, t) => { box.textContent = `Reading page ${n} of ${t}…`; }); }
+      finally { pm.close(); }
+      opts = { title: r.title, html: r.html, settings: r.settings, comments: {} };
+      toast(r.scanned.length ? `PDF converted. ${r.scanned.length} scanned page${r.scanned.length > 1 ? 's were' : ' was'} added as ${r.scanned.length > 1 ? 'pictures' : 'a picture'}, so ${r.scanned.length > 1 ? 'their' : 'its'} text can't be edited.` : 'PDF converted to an editable document. Check the layout against the original.', 7000);
+    }
     else if (ext === 'html' || ext === 'htm') opts = { title: name.replace(/\.[^.]+$/, ''), html: sanitizeHtml(await file.text(), false) };
     else if (ext === 'md') opts = { title: name.replace(/\.[^.]+$/, ''), html: mdToHtml(await file.text()) };
     else opts = { title: name.replace(/\.[^.]+$/, ''), html: (await file.text()).replace(/\r\n?/g, '\n').split('\n').map(l => `<p>${esc(l) || '<br>'}</p>`).join('') };
@@ -300,6 +321,7 @@ async function convertDocxToPdf() {
   pick.click();
 }
 CMD.save = async () => {
+  if (typeof Versions !== 'undefined' && doc) Versions.snap(record(), 'Saved', true).catch(() => { });
   await persist(true);
   const hnd = fileHandles[doc.id] || await KV.get('fh:' + doc.id);
   if (hnd && hnd.createWritable) {
@@ -436,7 +458,7 @@ function showDocxBar() {
 CMD.open = async () => {
   if (window.showOpenFilePicker && !IS_NATIVE) {
     try {
-      const [hnd] = await showOpenFilePicker({ id: 'draftly-open', startIn: 'documents', types: [{ description: 'Documents', accept: { [DOCX_MIME]: ['.docx'], 'text/html': ['.html', '.htm'], 'text/plain': ['.txt', '.md'] } }] });
+      const [hnd] = await showOpenFilePicker({ id: 'draftly-open', startIn: 'documents', types: [{ description: 'Documents', accept: { [DOCX_MIME]: ['.docx'], 'application/msword': ['.doc'], 'application/pdf': ['.pdf'], 'text/html': ['.html', '.htm'], 'text/plain': ['.txt', '.md'] } }] });
       return openFileObject(await hnd.getFile(), hnd);
     } catch (e) { if (e.name === 'AbortError') return; }
   }
@@ -603,7 +625,7 @@ const BACKSTAGE = {
   },
   async new(m) { m.append(h('h2', null, 'New')); await BACKSTAGE.newGrid(m); },
   async open(m) {
-    m.append(h('h2', null, 'Open'), h('div', { class: 'bs-actions' }, h('button', { class: 'bs-act', onclick: () => { if (!ui.launch) closeBackstage(); CMD.open(); } }, h('span', { class: 'ic', html: icon('FolderOpen') }), h('b', null, 'Browse…'), h('small', null, '.docx, .html, .txt, .md'))));
+    m.append(h('h2', null, 'Open'), h('div', { class: 'bs-actions' }, h('button', { class: 'bs-act', onclick: () => { if (!ui.launch) closeBackstage(); CMD.open(); } }, h('span', { class: 'ic', html: icon('FolderOpen') }), h('b', null, 'Browse…'), h('small', null, '.docx, .doc, .pdf, .html, .txt, .md'))));
     m.append(h('h3', null, 'Documents' + (Sync.enabled ? ' (all devices)' : ' on this device')), await recentList());
   },
   async info(m) {
@@ -616,6 +638,7 @@ const BACKSTAGE = {
     m.append(h('h3', null, 'Protect Document'), h('div', { class: 'bs-actions' },
       act(doc.settings.encrypted ? 'FileLock' : 'KeyRound', doc.settings.encrypted ? 'Password: On' : 'Encrypt with Password', doc.settings.encrypted ? 'Change or remove the password' : 'Word file needs a password to open', encryptDialog),
       act('Lock', doc.settings.restrict ? 'Editing Restricted' : 'Restrict Editing', doc.settings.restrict ? 'Stop protection' : 'Read only, or tracked changes only', restrictDialog)));
+    m.append(h('h3', null, 'Version History'), h('div', { class: 'bs-actions' }, act('History', 'Version History', 'See, compare or restore earlier versions', versionsDialog)));
     m.append(h('h3', null, 'Inspect Document'), h('div', { class: 'bs-actions' }, act('ScanSearch', 'Check for Issues', 'Comments, changes, personal info, hidden data', inspectDialog)));
   },
   async save(m) {
@@ -740,6 +763,7 @@ async function receiveRemote(id, meta) {
     if (!isOpen && local.stub) { await Store.put(Object.assign(local, { title: meta.title, modified: meta.modified })); return; }
     const remote = await Sync.pull(id);
     if (!remote) return;
+    if (typeof Versions !== 'undefined') await Versions.snap(isOpen ? record() : local, 'Before changes from another device').catch(() => { });
     const cur = isOpen ? doc : local;
     const unsynced = (cur.modified || 0) > (cur.syncedAt || 0);
     if (unsynced) {

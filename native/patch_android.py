@@ -35,20 +35,21 @@ open(plugin, 'w').write(p)
 mf = os.path.join(proj, 'android/app/src/main/AndroidManifest.xml')
 m = open(mf).read()
 docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-filters = f'''
+mimes = [docx, 'application/msword', 'application/pdf']
+filters = ''.join(f'''
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="content" android:mimeType="{docx}" />
-                <data android:scheme="file" android:mimeType="{docx}" />
+                <data android:scheme="content" android:mimeType="{mt}" />
+                <data android:scheme="file" android:mimeType="{mt}" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="{docx}" />
+                <data android:mimeType="{mt}" />
             </intent-filter>
-'''
+''' for mt in mimes)
 if docx not in m:
     i = m.index('</activity>')
     m = m[:i] + filters + '        ' + m[i:]

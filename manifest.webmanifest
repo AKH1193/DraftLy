@@ -17,6 +17,6 @@
   ],
   "launch_handler": { "client_mode": ["focus-existing", "auto"] },
   "file_handlers": [
-    { "action": "./", "accept": { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } }
+    { "action": "./", "accept": { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"], "application/msword": [".doc"], "application/pdf": [".pdf"] } }
   ]
 }

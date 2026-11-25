@@ -554,3 +554,13 @@ table.chart-grid input.num { text-align: right; }
 #editor img.chart, #editor img.flow { max-width: 100%; height: auto; cursor: pointer; }
 /* pinch zoom: let our code handle two-finger zoom inside the document */
 #canvas { touch-action: pan-x pan-y; }
+/* version history */
+.ver-list { max-height: 55vh; overflow: auto; }
+.ver-day { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 14px 0 4px; }
+.ver-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.ver-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ver-info b { font-size: 14px; } .ver-info span { font-size: 12px; color: var(--muted); }
+.ver-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ver-acts .btn { padding: 4px 10px; font-size: 12px; }
+.ver-prev-wrap { max-height: 60vh; overflow: auto; background: #e9ebee; padding: 12px; border-radius: 6px; }
+@media (max-width: 600px) { .ver-row { flex-direction: column; align-items: stretch; } .ver-acts { justify-content: flex-start; } }
