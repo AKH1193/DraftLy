@@ -33,6 +33,8 @@ async function persist(immediate) {
   scheduleFolderCopy();
 }
 async function loadDoc(d) {
+  // with tabs, another document opens in a tab of its own instead of replacing this one
+  if (HOST_SHELL || (IN_PANE && doc && doc.id !== d.id)) { const H = hostApi(); if (H) { H.open(d.id); return true; } }
   if (doc && doc.id !== d.id) await persist(true);
   if (typeof Merge !== "undefined") { Merge.preview = false; Merge.idx = 0; }
   const s = Object.assign(DEFAULT_SETTINGS(), d.settings || {});
@@ -60,7 +62,7 @@ async function loadDoc(d) {
 async function newDoc(opts = {}) {
   const d = { id: uid(), title: opts.title || nextTitle(), html: opts.html || '<p><br></p>', settings: Object.assign(DEFAULT_SETTINGS(), opts.settings || {}), comments: opts.comments || {}, created: Date.now(), modified: Date.now() };
   await Store.put(d);
-  await loadDoc(d);
+  if (await loadDoc(d)) { if (Sync.enabled) Sync.push(d, true); closeBackstage(); return d; }
   if (Sync.enabled) Sync.push(record(), true);
   closeBackstage();
   editor.focus();
@@ -71,7 +73,9 @@ const nextTitle = () => 'Document' + (docCounter++);
 async function deleteDoc(id) {
   await Store.del(id);
   if (typeof Versions !== 'undefined') Versions.removeAll(id);
-  if (Sync.enabled) Sync.remove(id);
+  if (Sync.enabled) await Sync.remove(id);
+  const H = hostApi();
+  if (H && H.has(id)) { H.closeDeleted(id); return; }
   if (doc && doc.id === id) {
     const all = (await Store.all()).filter(d => !d.stub);
     if (all.length) await loadDoc(all[0]); else { doc = null; await newDoc(); }
@@ -129,12 +133,14 @@ async function openFileObject(file, handle) {
         let same = false;
         try { same = !!(h2 && await h2.isSameEntry(handle)); } catch (e) { }
         if (!same) continue;
+        const H = hostApi();
+        if (H && H.has(old.id)) { H.open(old.id); closeBackstage(); return; } // already open: go to it
         const rec = Object.assign({}, old, { title: opts.title, html: opts.html, settings: Object.assign(DEFAULT_SETTINGS(), opts.settings || {}), comments: opts.comments || {}, modified: Date.now(), stub: false });
         await Store.put(rec);
         if (opts.password) Protect.remember(rec.id, opts.password);
-        await loadDoc(rec);
+        const routed = await loadDoc(rec);
         fileHandles[rec.id] = handle;
-        if (Sync.enabled) Sync.push(record(), true);
+        if (Sync.enabled) Sync.push(routed ? rec : record(), true);
         closeBackstage();
         toast('Opened ' + name);
         return;
@@ -565,7 +571,9 @@ async function takeNativeFile() {
 }
 
 /* ---------- backstage ---------- */
-function closeBackstage() { $('#backstage').classList.add('hidden'); if (ui.launch) { ui.launch = false; document.body.classList.remove('launch'); } }
+function closeBackstage() {
+  if (HOST_SHELL) { if (window.DLHost && DLHost.count()) DLHost.backToTabs(); return; } // the main window keeps its start screen until a document opens
+  $('#backstage').classList.add('hidden'); if (ui.launch) { ui.launch = false; document.body.classList.remove('launch'); } }
 async function openBackstage(page = 'home') {
   await persist();
   const bs = $('#backstage');
@@ -573,8 +581,9 @@ async function openBackstage(page = 'home') {
   let pages = [['home', 'House', 'Home'], ['new', 'FilePlus', 'New'], ['open', 'FolderOpen', 'Open'], ['info', 'Info', 'Info'], ['save', 'Save', 'Save'], ['saveas', 'Download', 'Save As / Export'], ['print', 'Printer', 'Print'], ['share', 'Share2', 'Share'], ['sync', 'History', 'Sync & Devices'], ['options', 'Settings', 'Options']];
   // the start screen only offers what makes sense before a document is open
   if (ui.launch) pages = pages.filter(p => ['home', 'new', 'open', 'sync', 'options'].includes(p[0])).map(p => p[0] === 'sync' ? ['sync', 'History', 'Sync'] : p);
-  const side = h('div', { class: 'bs-side' }, ui.launch ? h('div', { class: 'bs-brand' }, h('span', { class: 'logo' }, 'D'), h('b', null, 'DraftLy')) : h('button', { class: 'back', title: 'Back', onclick: closeBackstage, html: icon('ArrowLeft') }));
+  const side = h('div', { class: 'bs-side' }, ui.launch && !(HOST_SHELL && window.DLHost && DLHost.count()) ? h('div', { class: 'bs-brand' }, h('span', { class: 'logo' }, 'D'), h('b', null, 'DraftLy')) : h('button', { class: 'back', title: 'Back', onclick: closeBackstage, html: icon('ArrowLeft') }));
   pages.forEach(([id, ic, label]) => side.append(h('button', { class: id === page ? 'on' : '', onclick: () => openBackstage(id) }, h('span', { html: icon(ic) }), h('span', { class: 't' }, label))));
+  if (IN_PANE && doc) side.append(h('button', { class: 'bs-close', onclick: () => { const H = hostApi(); if (H) H.close(doc.id); } }, h('span', { html: icon('X') }), h('span', { class: 't' }, 'Close')));
   const main = h('div', { class: 'bs-main' });
   bs.innerHTML = '';
   bs.append(side, main);
@@ -589,7 +598,7 @@ async function recentList(limit) {
   const list = h('div', { class: 'recent-list' });
   if (!all.length) list.append(h('p', { class: 'note' }, 'No documents yet.'));
   all.slice(0, limit || 500).forEach(d => {
-    const it = h('div', { class: 'recent-item' }, h('span', { class: 'ic', html: icon(d.stub ? 'Download' : 'FileText') }), h('div', null, h('div', { class: 'nm' }, d.title || 'Untitled', doc && d.id === doc.id && !ui.launch ? ' (open)' : ''), h('div', { class: 'dt' }, new Date(d.modified || Date.now()).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }), d.stub ? ' · on another device' : '')),
+    const it = h('div', { class: 'recent-item' }, h('span', { class: 'ic', html: icon(d.stub ? 'Download' : 'FileText') }), h('div', null, h('div', { class: 'nm' }, d.title || 'Untitled', (doc && d.id === doc.id && !ui.launch) || (hostApi() && hostApi().has(d.id)) ? ' (open)' : ''), h('div', { class: 'dt' }, new Date(d.modified || Date.now()).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }), d.stub ? ' · on another device' : '')),
       h('button', { class: 'del', title: 'Delete', html: icon('Trash2'), onclick: async ev => { ev.stopPropagation(); if (confirm(`Delete "${d.title}"${Sync.enabled ? ' from all your devices' : ''}?`)) { await deleteDoc(d.id); openBackstage('open'); } } }));
     it.addEventListener('click', () => openRecord(d.id));
     list.append(it);
@@ -741,13 +750,15 @@ const BACKSTAGE = {
     });
     m.append(grid);
     m.append(h('h3', null, 'About'), h('p', { class: 'note' }, 'DraftLy works offline. Documents are kept in this browser or app on each device' + (Sync.enabled ? ' and synced through your Firebase project.' : '.') + ' Device ID: ' + Sync.deviceId));
-    m.append(h('h3', null, 'Reset'), h('button', { class: 'btn', onclick: async () => { if (confirm('Delete ALL DraftLy documents stored on this device? Synced copies stay in your Firebase project.')) { indexedDB.deleteDatabase('draftly'); localStorage.removeItem(PREFS_KEY); location.reload(); } } }, 'Clear this device'));
+    m.append(h('h3', null, 'Reset'), h('button', { class: 'btn', onclick: async () => { if (confirm('Delete ALL DraftLy documents stored on this device? Synced copies stay in your Firebase project.')) { indexedDB.deleteDatabase('draftly'); localStorage.removeItem(PREFS_KEY); window.top.location.reload(); } } }, 'Clear this device'));
   }
 };
 
 /* ---------- sync wiring ---------- */
 const syncBusy = new Set();
 async function receiveRemote(id, meta) {
+  // a document open in a tab is updated by that tab
+  if (HOST_SHELL && window.DLHost && DLHost.has(id)) { const w = DLHost.win(id); if (w && w.receiveRemote) return w.receiveRemote(id, meta); }
   if (syncBusy.has(id)) return;
   syncBusy.add(id);
   try {
@@ -803,7 +814,7 @@ async function mergeRemote(all) {
   for (const [id, meta] of Object.entries(all || {})) await receiveRemote(id, meta);
   for (const l of locals) {
     if (all && all[l.id]) { if ((l.modified || 0) > (all[l.id].modified || 0) && !l.stub) Sync.push(l, true); continue; }
-    if (l.syncedAt && !(doc && doc.id === l.id)) await Store.del(l.id);
+    if (l.syncedAt && !(doc && doc.id === l.id) && !(window.DLHost && DLHost.has(l.id))) await Store.del(l.id);
     else if (!l.stub) Sync.push(l, true);
   }
   if (!$('#backstage').classList.contains('hidden')) { const on = $('.bs-side button.on'); if (on && /Open|Home/.test(on.textContent)) openBackstage(/Open/.test(on.textContent) ? 'open' : 'home'); }
@@ -854,15 +865,30 @@ Sync.on(async (type, data) => {
 
   const all = await Store.all();
   docCounter = all.length + 1;
-  const last = prefs.lastDoc && all.find(d => d.id === prefs.lastDoc && !d.stub);
-  const first = last || all.find(d => !d.stub);
-  if (first) await loadDoc(first);
-  else await newDoc({ title: 'Document1' });
+  if (IN_PANE) {
+    const d = await Store.get(PANE_ID);
+    if (!d) { const H = hostApi(); if (H) H.closeDeleted(PANE_ID); return; }
+    await loadDoc(d);
+  } else if (!HOST_SHELL) {
+    const last = prefs.lastDoc && all.find(d => d.id === prefs.lastDoc && !d.stub);
+    const first = last || all.find(d => !d.stub);
+    if (first) await loadDoc(first);
+    else await newDoc({ title: 'Document1' });
+  }
   closeBackstage();
-  if (innerWidth < 760) { ui.fitWidth = true; setView('web'); if (prefs.webZoom && prefs.webZoom !== 1) applyWebZoom(prefs.webZoom); }
+  window.DraftLy = { get doc() { return doc; }, editor, exportAs, buildDocx, openFileObject, newDoc, paginate, Review, History, Sync };
+  if (IN_PANE) {
+    if (window.parent.innerWidth < 760) { ui.fitWidth = true; setView('web'); if (prefs.webZoom && prefs.webZoom !== 1) applyWebZoom(prefs.webZoom); }
+    else { if (prefs.zoom === 'width') ui.fitWidth = true; else if (typeof prefs.zoom === 'number') ui.zoom = prefs.zoom; ui.ruler = !!prefs.ruler; }
+    renderTabs(); renderRibbon(); applyZoom();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => paginate());
+    return;
+  }
+  if (HOST_SHELL) { }
+  else if (innerWidth < 760) { ui.fitWidth = true; setView('web'); if (prefs.webZoom && prefs.webZoom !== 1) applyWebZoom(prefs.webZoom); }
   else { if (prefs.zoom === 'width') ui.fitWidth = true; else if (typeof prefs.zoom === 'number') ui.zoom = prefs.zoom; ui.ruler = !!prefs.ruler; }
-  renderTabs(); renderRibbon(); applyZoom();
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => paginate());
+  if (!HOST_SHELL) { renderTabs(); renderRibbon(); applyZoom(); }
+  if (document.fonts && document.fonts.ready && doc) document.fonts.ready.then(() => paginate());
   // start on the Home screen (recent documents and templates); a file opened from Finder or another app skips it
   launchHome();
   if (Sync.readSetupLink()) openBackstage('sync');

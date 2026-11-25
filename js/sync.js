@@ -36,7 +36,13 @@ const Sync = (() => {
     if (!t.ok) { const e = await t.json().catch(() => ({})); throw new Error('Signed in, but the database refused access: ' + (e.error || t.status) + '. Check the database rules (see setup steps).'); }
     connect();
   }
-  function signOut() { disconnect(); cfg = null; localStorage.removeItem(KEY); setStatus('off'); }
+  function signOut() { disconnect(); cfg = null; localStorage.removeItem(KEY); setStatus('off'); if (IN_PANE) try { window.parent.DLHost.syncReload(); } catch (e) { } }
+  // main window: pick up a sign-in or sign-out made in a document pane
+  function reload() {
+    cfg = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (!cfg || !cfg.uid) { disconnect(); setStatus('off'); }
+    else if (!es || es.readyState === 2) connect();
+  }
   async function token() {
     if (!cfg || !cfg.refreshToken) throw new Error('not signed in');
     if (Date.now() < cfg.expiresAt - 120000) return cfg.idToken;
@@ -55,6 +61,8 @@ const Sync = (() => {
   }
 
   async function connect() {
+    // a document pane leaves the live connection to the main window, which passes changes on to it
+    if (IN_PANE) { try { window.parent.DLHost.syncReload(); } catch (e) { } return; }
     disconnect();
     if (!cfg || !cfg.uid) return setStatus('off');
     if (!navigator.onLine) return setStatus('offline');
@@ -127,7 +135,7 @@ const Sync = (() => {
     try { return JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { return null; }
   }
   return {
-    signIn, signOut, connect, push, pull, remove, setupLink, readSetupLink,
+    signIn, signOut, connect, reload, mirror: s => { if (IN_PANE && s !== status) setStatus(s); }, push, pull, remove, setupLink, readSetupLink,
     on: f => listeners.push(f),
     get status() { return status; }, get enabled() { return !!(cfg && cfg.uid); }, get email() { return cfg && cfg.email; },
     get cfg() { return cfg; }, get meta() { return remoteMeta; }, deviceId

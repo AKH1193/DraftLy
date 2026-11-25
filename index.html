@@ -13,6 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="DraftLy">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>if(window.parent!==window)document.documentElement.classList.add('in-pane')</script>
 <link rel="stylesheet" href="css/app.css">
 <style id="docStyles"></style>
 <style id="printStyles"></style>
@@ -47,6 +48,7 @@
   <div class="sp-line"><i></i></div>
   <script>(function(){
     var s=document.getElementById('splash'),t0=Date.now(),done=false,P={};
+    if(window.parent!==window){s.remove();return}
     try{P=JSON.parse(localStorage.getItem('draftly.prefs')||'{}')}catch(e){}
     /* launch sound: a few soft key clicks, then a mouse click (made on the fly, no audio files) */
     if(P.launchSound!==false){try{
@@ -174,5 +176,6 @@
 <script src="js/listnum.js"></script>
 <script src="js/ribbon.js"></script>
 <script src="js/file.js"></script>
+<script src="js/tabs.js"></script>
 </body>
 </html>

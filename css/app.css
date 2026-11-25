@@ -580,3 +580,36 @@ table.chart-grid input.num { text-align: right; }
 .num-bar button:hover { background: var(--hover); }
 .num-bar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
 @media print { #numSelLayer, .num-bar { display: none !important; } }
+
+/* ---------- several documents: tabs and side by side ---------- */
+html.in-pane { --safe-top: 0px; --safe-bottom: 0px; }
+#tabHost { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; background: var(--tb-bg); padding: var(--safe-top) 0 var(--safe-bottom); }
+#tabHost.hidden { display: none; }
+#tabStrip { flex: none; display: flex; align-items: center; gap: 3px; height: 36px; padding: 0 8px; color: var(--tb-text); background: var(--tb-bg); overflow-x: auto; scrollbar-width: none; font: 12.5px var(--ui-font); }
+#tabStrip::-webkit-scrollbar { display: none; }
+#tabHost.one #tabStrip { display: none; }
+#tabStrip .tab { flex: 0 1 auto; min-width: 90px; max-width: 230px; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 10px; border-radius: 7px; cursor: pointer; opacity: .78; transition: background .12s, opacity .12s; }
+#tabStrip .tab:hover { background: var(--tb-hover); opacity: 1; }
+#tabStrip .tab.shown { background: rgba(255,255,255,.12); opacity: .95; }
+#tabStrip .tab.on { background: rgba(255,255,255,.24); opacity: 1; box-shadow: inset 0 -2px 0 rgba(255,255,255,.85); }
+#tabStrip .tab .ic { display: flex; flex: none; }
+#tabStrip .tab .ic svg, #tabStrip .tb-btn svg { width: 15px; height: 15px; }
+#tabStrip .tab .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tabStrip .tab .x { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; opacity: .55; }
+#tabStrip .tab .x svg { width: 13px; height: 13px; }
+#tabStrip .tab .x:hover { opacity: 1; background: var(--tb-hover); }
+#tabStrip .sp { flex: 1; min-width: 8px; }
+#tabStrip .tb-btn { flex: none; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
+#tabStrip .tb-btn:hover { background: var(--tb-hover); }
+#tabStrip .tb-btn.on { background: rgba(255,255,255,.24); }
+#paneArea { position: relative; flex: 1; min-height: 0; background: var(--bg); }
+.pane-frame { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; height: 100%; border: 0; background: var(--bg); z-index: 1; display: block; }
+.pane-frame.off { visibility: hidden; pointer-events: none; z-index: 0; }
+#paneArea .pane-frame:not(.off) + .pane-frame:not(.off), #paneArea:has(.pane-div:not(.hidden)) .pane-frame:not(.off) { box-sizing: border-box; border-top: 3px solid transparent; }
+#paneArea:has(.pane-div:not(.hidden)) .pane-frame.focus { border-top-color: var(--accent-2); }
+.pane-div { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 3; cursor: col-resize; background: var(--border); touch-action: none; }
+.pane-div::after { content: ''; position: absolute; left: 2px; top: 50%; width: 2px; height: 34px; margin-top: -17px; border-radius: 2px; background: var(--muted); opacity: .6; }
+.pane-div.hidden { display: none; }
+#paneArea.dragging .pane-frame { pointer-events: none; }
+.bs-side .bs-close { margin-top: auto; }
+@media (max-width: 760px) { #tabStrip .tb-btn .l { display: none; } #tabStrip .tab { max-width: 160px; } }

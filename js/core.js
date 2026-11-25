@@ -4,6 +4,13 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const editor = $('#editor');
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform) || /Macintosh/.test(navigator.userAgent);
 const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+/* Each open document runs in its own pane (an iframe of this same page, ?pane=<id>). The top window is the
+   shell that holds the tabs; ?single keeps the old one-document window (used by tests). */
+const PANE_ID = (() => { try { return window.parent !== window && window.parent.location.origin === location.origin ? new URLSearchParams(location.search).get('pane') : null; } catch (e) { return null; } })();
+const IN_PANE = !!PANE_ID;
+const HOST_SHELL = !IN_PANE && !/[?&]single\b/.test(location.search);
+const hostApi = () => { try { return IN_PANE ? window.parent.DLHost : window.DLHost; } catch (e) { return null; } };
+if (IN_PANE && window.parent.Capacitor) try { window.Capacitor = window.parent.Capacitor; } catch (e) { } // the native bridge lives in the main window
 const IS_NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -31,6 +38,15 @@ function toast(msg, ms = 2600) {
 const PREFS_KEY = 'draftly.prefs';
 const prefs = Object.assign({ author: 'Anirudh K H', styleSet: 'Default', dark: false, autosave: true, lastDoc: null, lang: 'en-IN' }, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'));
 const savePrefs = () => localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+// several documents can be open at once (one pane each); keep everyone's settings in step
+window.addEventListener('storage', e => {
+  if (e.key !== PREFS_KEY || !e.newValue) return;
+  let n; try { n = JSON.parse(e.newValue); } catch (err) { return; }
+  const was = { dark: prefs.dark, theme: prefs.theme };
+  Object.assign(prefs, n);
+  if (was.dark !== prefs.dark) document.body.classList.toggle('dark', !!prefs.dark);
+  if (was.theme !== prefs.theme && typeof applyTheme === 'function') applyTheme(prefs.theme || 'ocean');
+});
 
 /* ---------- interface themes ---------- */
 const THEMES = {
@@ -140,7 +156,7 @@ const Store = (() => {
     r.onupgradeneeded = () => { r.result.createObjectStore('docs', { keyPath: 'id' }); };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }));
-  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('docs', mode); const st = t.objectStore('docs'); const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); }); };
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('docs', mode); const st = t.objectStore('docs'); const out = fn(st); t.oncomplete = () => res(out instanceof IDBRequest ? out.result : out); t.onerror = () => rej(t.error); }); };
   return {
     async get(id) { try { return await tx('readonly', s => s.get(id)); } catch (e) { return null; } },
     async put(d) { try { await tx('readwrite', s => s.put(d)); } catch (e) { console.warn('save failed', e); } },
